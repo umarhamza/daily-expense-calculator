@@ -28,8 +28,8 @@ onMounted(() => {
 
 function handleSwipe() {
   if (!isSwiping.value) return
-  if (direction.value === 'left') currentView.value = currentView.value === 'day' ? 'month' : 'month'
-  if (direction.value === 'right') currentView.value = currentView.value === 'month' ? 'day' : 'day'
+  if (direction.value === 'left') currentView.value = currentView.value === 'day' ? 'month' : 'day'
+  if (direction.value === 'right') currentView.value = currentView.value === 'month' ? 'day' : 'month'
 }
 </script>
 
