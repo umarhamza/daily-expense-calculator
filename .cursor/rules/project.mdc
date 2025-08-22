@@ -8,7 +8,7 @@ alwaysApply: true
 - Vue 3 + Vite 7, TailwindCSS 4
 - Supabase client at `src/lib/supabase.js`
 - Alias `@` → `src`
-
+- Bun runtime
 ## Global principles
 - Prefer functional, declarative patterns; avoid classes.
 - Use `function` declarations for pure utilities and module exports.
