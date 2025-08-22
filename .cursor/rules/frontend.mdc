@@ -1,0 +1,47 @@
+---
+description: Vue + Tailwind + Supabase frontend conventions for this project
+globs:
+  - "src/**/*.{vue,js,ts,jsx,tsx,css}"
+  - "index.html"
+alwaysApply: false
+---
+
+## Vue patterns
+- Use `<script setup>` SFCs.
+- Use `ref`/`computed` and `@vueuse/core` composables where useful.
+- Emit events from children; keep state lifting minimal.
+- Keep components lean; split when they grow too large.
+
+## TailwindCSS
+- Prefer utility-first classes in templates; avoid inline `style`.
+- Keep global CSS minimal; use `src/assets/main.css` for app-wide primitives.
+- Reuse existing utility patterns (e.g., `max-w-md`, spacing scale, neutral backgrounds).
+
+## Supabase usage in UI
+- Require env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- No secrets in code or logs.
+- Place data-access in `src/lib/supabase.js` (or sibling module). Keep components thin.
+- Prefer throwing errors in data layer and handling in the caller.
+
+## Error handling & data shapes
+- Components should handle loading, empty, and error states explicitly.
+- Do not return partial data on errors; throw and let callers decide.
+
+## Performance & UX
+- Keep bundle lean; avoid unnecessary dependencies.
+- Optimize for mobile-first UX.
+- Use lazy-loading/chunking only when it materially improves UX.
+
+## Snippet template
+```js
+/**
+ * One-line purpose.
+ * @param {*} arg - brief.
+ * @returns {*} brief.
+ * @throws {Error} when X fails.
+ */
+function doThing(arg) {
+  if (!arg) throw new Error('arg is required')
+}
+export { doThing }
+```

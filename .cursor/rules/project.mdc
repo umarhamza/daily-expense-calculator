@@ -1,0 +1,52 @@
+---
+description: Project-wide standards and conventions for Daily Expense Tracker
+globs:
+alwaysApply: true
+---
+
+## Project context
+- Vue 3 + Vite 7, TailwindCSS 4
+- Supabase client at `src/lib/supabase.js`
+- Alias `@` → `src`
+
+## Global principles
+- Prefer functional, declarative patterns; avoid classes.
+- Use `function` declarations for pure utilities and module exports.
+- Keep code self-explanatory; minimal comments. When needed, add concise block comments above functions.
+- Use descriptive names (e.g., `isLoading`, `hasError`).
+- Prefer iteration and small, composable functions over duplication.
+- Use early returns; avoid deep nesting.
+- Throw on exceptional states; do not add silent fallbacks. Handle user messaging at UI boundaries.
+- Avoid enums; use object maps.
+- Avoid unnecessary curly braces in simple conditionals.
+- Stay in JavaScript unless TypeScript is explicitly requested.
+
+## File/dir conventions
+- `src/components`: UI components. Avoid direct network calls in purely presentational components.
+- `src/lib`: Framework-agnostic utilities and data-access.
+- `public/`: Static assets only.
+- Import using `@/...` over deep relative paths.
+
+## Tooling & commands
+- Node engines: `^20.19.0 || >=22.12.0`.
+- Scripts: `npm run dev`, `npm run build`, `npm run preview`.
+- Do not change engines or bump major deps without approval. Do not edit lock files manually.
+
+## Editing rules for assistants
+- Make the smallest possible edits; don’t reformat unrelated code.
+- Preserve indentation and file formatting.
+- New functions must include a short block comment describing purpose, inputs, outputs, and errors thrown.
+- Prefer creating small modules over growing large files.
+- Keep exports explicit and named when practical.
+
+## Security
+- Never log secrets or full Supabase keys.
+- Do not commit `.env*`. Validate and sanitize inputs before persistence.
+
+## Refactoring
+- Prefer incremental, scoped refactors. Avoid sweeping changes.
+- Maintain component contracts (props, emits) unless all call sites are updated.
+
+## Out of scope unless requested
+- Introducing TypeScript, state managers, testing frameworks, routing, or auth.
+- Global design system rewrites or Tailwind theme overhauls.
