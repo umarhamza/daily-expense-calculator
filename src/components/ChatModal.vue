@@ -1,0 +1,39 @@
+<script setup>
+import { ref } from 'vue'
+
+const emit = defineEmits(['close'])
+const props = defineProps({ isOpen: { type: Boolean, default: false } })
+
+const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }])
+const input = ref('')
+
+async function sendMessage() {
+  const q = input.value.trim()
+  if (!q) return
+  messages.value.push({ role: 'user', content: q })
+  input.value = ''
+  // Stubbed API call
+  await new Promise(r => setTimeout(r, 300))
+  messages.value.push({ role: 'assistant', content: 'Analysis coming soon (MVP stub).' })
+}
+</script>
+
+<template>
+  <div v-if="isOpen" class="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/30">
+    <div class="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Chat</h2>
+        <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>
+      </div>
+      <div class="h-56 overflow-y-auto space-y-2 border border-gray-100 rounded-md p-3 mb-3">
+        <div v-for="(m, i) in messages" :key="i" class="text-sm" :class="m.role === 'user' ? 'text-right' : 'text-left'">
+          <span class="inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'">{{ m.content }}</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <input class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" v-model="input" placeholder="Ask a question..." @keydown.enter="sendMessage" />
+        <button class="bg-blue-600 text-white px-4 py-2 rounded-md" @click="sendMessage">Send</button>
+      </div>
+    </div>
+  </div>
+</template>

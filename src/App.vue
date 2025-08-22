@@ -1,47 +1,53 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
-import TheWelcome from './components/TheWelcome.vue'
+import { ref, computed, onMounted } from 'vue'
+import { useSwipe } from '@vueuse/core'
+import BottomNav from './components/BottomNav.vue'
+import DayView from './components/DayView.vue'
+import MonthView from './components/MonthView.vue'
+import ChatModal from './components/ChatModal.vue'
+
+const currentView = ref('day') // 'day' | 'month'
+const isChatOpen = ref(false)
+
+function handleNavigate(target) {
+  if (target === 'chat') { isChatOpen.value = true; return }
+  currentView.value = target
+}
+
+const todayIso = new Date().toISOString().slice(0, 10)
+const selectedDate = ref(todayIso)
+
+const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + '-01')
+
+const container = ref(null)
+const { direction, isSwiping } = useSwipe(container, { threshold: 30 })
+
+onMounted(() => {
+  // no-op
+})
+
+function handleSwipe() {
+  if (!isSwiping.value) return
+  if (direction.value === 'left') currentView.value = currentView.value === 'day' ? 'month' : 'month'
+  if (direction.value === 'right') currentView.value = currentView.value === 'month' ? 'day' : 'day'
+}
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
+  <div ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 pb-16">
+    <main class="mx-auto max-w-md px-4 pt-4">
+      <component :is="currentView === 'day' ? DayView : MonthView"
+        :date="selectedDate"
+        :monthDate="monthOfSelected"
+        @changeDate="d => (selectedDate = d)"
+      />
+    </main>
 
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-    </div>
-  </header>
+    <BottomNav :current="currentView" @navigate="handleNavigate" />
 
-  <main>
-    <TheWelcome />
-  </main>
+    <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" />
+  </div>
 </template>
 
 <style scoped>
-header {
-  line-height: 1.5;
-}
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-}
 </style>
