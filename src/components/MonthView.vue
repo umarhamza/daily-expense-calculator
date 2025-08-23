@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watchEffect } from 'vue'
 import { fetchExpensesByMonth } from '@/lib/supabase'
+import { formatMonth } from '@/lib/date'
 
 const props = defineProps({ monthDate: { type: String, required: true }, userId: { type: String, required: true } })
 
@@ -22,12 +23,13 @@ const grouped = computed(() => {
 })
 
 const grandTotal = computed(() => grouped.value.reduce((s, g) => s + g.sum, 0))
+const formattedMonth = computed(() => formatMonth(props.monthDate))
 </script>
 
 <template>
   <div class="pb-16">
     <header class="flex items-center justify-between mb-4">
-      <h1 class="text-xl font-semibold">{{ monthDate.slice(0, 7) }}</h1>
+      <h1 class="text-xl font-semibold">{{ formattedMonth }}</h1>
     </header>
 
     <div class="space-y-2">
