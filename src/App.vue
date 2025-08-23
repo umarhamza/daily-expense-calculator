@@ -34,7 +34,7 @@ function handleSwipe() {
 </script>
 
 <template>
-  <div ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 pb-16">
+  <div ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
     <main class="mx-auto max-w-md px-4 pt-4">
       <component :is="currentView === 'day' ? DayView : MonthView"
         :date="selectedDate"
