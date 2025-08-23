@@ -7,6 +7,7 @@ import { formatDay } from "@/lib/date";
 // Edit modal state
 import EditExpenseModal from "./EditExpenseModal.vue";
 import { updateExpense, deleteExpense } from "@/lib/supabase";
+import { showErrorToast } from "@/lib/toast";
 const isEditOpen = ref(false);
 const selectedExpense = ref(null);
 
@@ -28,7 +29,8 @@ watchEffect(async () => {
   }
   const isPrevious = props.date < lastDate.value;
   isLoading.value = isPrevious;
-  const { data } = await fetchExpensesByDate(props.userId, props.date);
+  const { data, error } = await fetchExpensesByDate(props.userId, props.date);
+  if (error) showErrorToast(error.message);
   expenses.value = data ?? [];
   isLoading.value = false;
   lastDate.value = props.date;
@@ -41,7 +43,8 @@ function closeModal() {
   isModalOpen.value = false;
 }
 async function addExpense(e) {
-  const { data } = await insertExpense(props.userId, e);
+  const { data, error } = await insertExpense(props.userId, e);
+  if (error) showErrorToast(error.message);
   if (data) expenses.value = [data, ...expenses.value];
   closeModal();
 }
@@ -55,11 +58,12 @@ function closeEdit() {
   selectedExpense.value = null;
 }
 async function saveEdit(updated) {
-  const { data } = await updateExpense(props.userId, updated.id, {
+  const { data, error } = await updateExpense(props.userId, updated.id, {
     item: updated.item,
     cost: updated.cost,
     date: updated.date,
   });
+  if (error) showErrorToast(error.message);
   if (data) {
     const idx = expenses.value.findIndex((e) => e.id === data.id);
     if (idx !== -1) expenses.value.splice(idx, 1, data);
@@ -71,6 +75,7 @@ async function confirmAndDelete(toDelete) {
   const ok = window.confirm("Are you sure you want to delete this item?");
   if (!ok) return;
   const { error } = await deleteExpense(props.userId, toDelete.id);
+  if (error) showErrorToast(error.message);
   if (!error) {
     expenses.value = expenses.value.filter((e) => e.id !== toDelete.id);
   }

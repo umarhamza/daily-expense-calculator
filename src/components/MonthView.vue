@@ -2,6 +2,7 @@
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
 import { formatMonth } from "@/lib/date";
+import { showErrorToast } from "@/lib/toast";
 
 const props = defineProps({
   monthDate: { type: String, required: true },
@@ -15,7 +16,8 @@ watchEffect(async () => {
     expenses.value = [];
     return;
   }
-  const { data } = await fetchExpensesByMonth(props.userId, props.monthDate);
+  const { data, error } = await fetchExpensesByMonth(props.userId, props.monthDate);
+  if (error) showErrorToast(error.message);
   expenses.value = data ?? [];
 });
 

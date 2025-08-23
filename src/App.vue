@@ -7,6 +7,7 @@ import MonthView from './components/MonthView.vue'
 import ChatModal from './components/ChatModal.vue'
 import AuthForm from './components/AuthForm.vue'
 import { supabase } from '@/lib/supabase'
+import Toasts from './components/Toasts.vue'
 
 const currentView = ref('day') // 'day' | 'month'
 const isChatOpen = ref(false)
@@ -124,6 +125,7 @@ async function logout() { await supabase.auth.signOut() }
 
     <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" />
   </div>
+  <Toasts />
 </template>
 
 <style scoped>
