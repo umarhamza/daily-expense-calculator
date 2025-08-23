@@ -1,16 +1,27 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import AddExpenseModal from './AddExpenseModal.vue'
+import { fetchExpensesByDate, insertExpense } from '@/lib/supabase'
 
-const props = defineProps({ date: { type: String, required: true } })
+const props = defineProps({ date: { type: String, required: true }, userId: { type: String, required: true } })
 const emit = defineEmits(['changeDate'])
 
 const expenses = ref([])
 const isModalOpen = ref(false)
 
+watchEffect(async () => {
+  if (!props.userId || !props.date) { expenses.value = []; return }
+  const { data } = await fetchExpensesByDate(props.userId, props.date)
+  expenses.value = data ?? []
+})
+
 function openModal() { isModalOpen.value = true }
 function closeModal() { isModalOpen.value = false }
-function addExpense(e) { expenses.value = [e, ...expenses.value]; closeModal() }
+async function addExpense(e) {
+  const { data } = await insertExpense(props.userId, e)
+  if (data) expenses.value = [data, ...expenses.value]
+  closeModal()
+}
 
 const total = computed(() => expenses.value.reduce((s, e) => s + e.cost, 0))
 function goToday() {
@@ -28,7 +39,7 @@ function goToday() {
     </header>
 
     <div class="space-y-2">
-      <div v-for="(e, i) in expenses" :key="i" class="flex items-center justify-between  bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+      <div v-for="(e, i) in expenses" :key="e.id ?? i" class="flex items-center justify-between  bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
         <div class="font-medium">{{ e.item }}</div>
         <div class="text-gray-700 dark:text-gray-200">${{ e.cost.toFixed(2) }}</div>
       </div>
