@@ -44,6 +44,28 @@ function getNextIsoDate(isoDate) {
   return next.toISOString().slice(0, 10)
 }
 
+const currentMonthStart = todayIso.slice(0, 7) + '-01'
+
+/**
+ * Returns ISO date string (YYYY-MM-01) for the first day of the previous month.
+ * Input should be an ISO date string. Typically pass a month-start string.
+ */
+function getPreviousMonthStart(isoDate) {
+  const date = new Date(isoDate)
+  const prev = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1))
+  return prev.toISOString().slice(0, 10)
+}
+
+/**
+ * Returns ISO date string (YYYY-MM-01) for the first day of the next month.
+ * Input should be an ISO date string. Typically pass a month-start string.
+ */
+function getNextMonthStart(isoDate) {
+  const date = new Date(isoDate)
+  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1))
+  return next.toISOString().slice(0, 10)
+}
+
 function handleSwipe() {
   if (!isSwiping.value) return
 
@@ -60,9 +82,17 @@ function handleSwipe() {
     return
   }
 
-  // Month View: retain existing left/right behavior to switch views
-  if (direction.value === 'left') currentView.value = currentView.value === 'day' ? 'month' : 'day'
-  if (direction.value === 'right') currentView.value = currentView.value === 'month' ? 'day' : 'month'
+  // Month View: left = previous month; right = next month (not beyond current month)
+  if (currentView.value === 'month') {
+    if (direction.value === 'left') {
+      selectedDate.value = getPreviousMonthStart(monthOfSelected.value)
+    }
+    if (direction.value === 'right') {
+      if (monthOfSelected.value === currentMonthStart) return
+      const nextMonth = getNextMonthStart(monthOfSelected.value)
+      selectedDate.value = nextMonth > currentMonthStart ? currentMonthStart : nextMonth
+    }
+  }
 }
 </script>
 
