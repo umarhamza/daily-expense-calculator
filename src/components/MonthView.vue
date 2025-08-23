@@ -1,29 +1,35 @@
 <script setup>
-import { computed, ref, watchEffect } from 'vue'
-import { fetchExpensesByMonth } from '@/lib/supabase'
-import { formatMonth } from '@/lib/date'
+import { computed, ref, watchEffect } from "vue";
+import { fetchExpensesByMonth } from "@/lib/supabase";
+import { formatMonth } from "@/lib/date";
 
-const props = defineProps({ monthDate: { type: String, required: true }, userId: { type: String, required: true } })
+const props = defineProps({
+  monthDate: { type: String, required: true },
+  userId: { type: String, required: true },
+});
 
-const expenses = ref([])
+const expenses = ref([]);
 
 watchEffect(async () => {
-  if (!props.userId || !props.monthDate) { expenses.value = []; return }
-  const { data } = await fetchExpensesByMonth(props.userId, props.monthDate)
-  expenses.value = data ?? []
-})
+  if (!props.userId || !props.monthDate) {
+    expenses.value = [];
+    return;
+  }
+  const { data } = await fetchExpensesByMonth(props.userId, props.monthDate);
+  expenses.value = data ?? [];
+});
 
 const grouped = computed(() => {
-  const totals = new Map()
+  const totals = new Map();
   for (const e of expenses.value) {
-    const prev = totals.get(e.item) ?? 0
-    totals.set(e.item, prev + e.cost)
+    const prev = totals.get(e.item) ?? 0;
+    totals.set(e.item, prev + e.cost);
   }
-  return Array.from(totals.entries()).map(([item, sum]) => ({ item, sum }))
-})
+  return Array.from(totals.entries()).map(([item, sum]) => ({ item, sum }));
+});
 
-const grandTotal = computed(() => grouped.value.reduce((s, g) => s + g.sum, 0))
-const formattedMonth = computed(() => formatMonth(props.monthDate))
+const grandTotal = computed(() => grouped.value.reduce((s, g) => s + g.sum, 0));
+const formattedMonth = computed(() => formatMonth(props.monthDate));
 </script>
 
 <template>
@@ -33,16 +39,29 @@ const formattedMonth = computed(() => formatMonth(props.monthDate))
     </header>
 
     <div class="space-y-2">
-      <div v-for="g in grouped" :key="g.item" class="flex items-center justify-between  bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+      <div
+        v-for="g in grouped"
+        :key="g.item"
+        class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3"
+      >
         <div class="font-medium">{{ g.item }}</div>
-        <div class="text-gray-700 dark:text-gray-200">${{ g.sum.toFixed(2) }}</div>
+        <div class="text-gray-700 dark:text-gray-200">
+          D{{ g.sum.toFixed(2) }}
+        </div>
       </div>
-      <div v-if="!grouped.length" class="text-center text-gray-400 dark:text-gray-400 py-10">No data for this month</div>
+      <div
+        v-if="!grouped.length"
+        class="text-center text-gray-400 dark:text-gray-400 py-10"
+      >
+        No data for this month
+      </div>
     </div>
 
-    <div class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200">
+    <div
+      class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200"
+    >
       <div class="font-semibold">Total</div>
-      <div class="font-semibold">${{ grandTotal.toFixed(2) }}</div>
+      <div class="font-semibold">D{{ grandTotal.toFixed(2) }}</div>
     </div>
   </div>
 </template>
