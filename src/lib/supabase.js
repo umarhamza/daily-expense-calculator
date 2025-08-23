@@ -56,6 +56,31 @@ export async function insertExpense(userId, expense) {
 }
 
 /**
+ * Update an existing expense by id for the user. Returns { data, error } with the updated row.
+ * Expects expense: { item?: string, cost?: number, date?: YYYY-MM-DD }
+ */
+export async function updateExpense(userId, id, expense) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .update(expense)
+    .match({ id, user_id: userId })
+    .select('id,item,cost,date,created_at')
+    .single()
+  return { data, error }
+}
+
+/**
+ * Delete an expense by id for the user. Returns { error }.
+ */
+export async function deleteExpense(userId, id) {
+  const { error } = await supabase
+    .from('expenses')
+    .delete()
+    .match({ id, user_id: userId })
+  return { error }
+}
+
+/**
  * Autocomplete items based on partial query using ILIKE on item.
  */
 export async function fetchAutocompleteItems(partial) {
