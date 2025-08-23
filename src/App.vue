@@ -26,8 +26,41 @@ onMounted(() => {
   // no-op
 })
 
+/**
+ * Returns ISO date string for the previous calendar day relative to provided ISO date.
+ */
+function getPreviousIsoDate(isoDate) {
+  const ms = Date.parse(isoDate)
+  const prev = new Date(ms - 24 * 60 * 60 * 1000)
+  return prev.toISOString().slice(0, 10)
+}
+
+/**
+ * Returns ISO date string for the next calendar day relative to provided ISO date.
+ */
+function getNextIsoDate(isoDate) {
+  const ms = Date.parse(isoDate)
+  const next = new Date(ms + 24 * 60 * 60 * 1000)
+  return next.toISOString().slice(0, 10)
+}
+
 function handleSwipe() {
   if (!isSwiping.value) return
+
+  // Day View: left = previous day; right = next day (not beyond today)
+  if (currentView.value === 'day') {
+    if (direction.value === 'left') {
+      selectedDate.value = getPreviousIsoDate(selectedDate.value)
+    }
+    if (direction.value === 'right') {
+      if (selectedDate.value === todayIso) return
+      const next = getNextIsoDate(selectedDate.value)
+      selectedDate.value = next > todayIso ? todayIso : next
+    }
+    return
+  }
+
+  // Month View: retain existing left/right behavior to switch views
   if (direction.value === 'left') currentView.value = currentView.value === 'day' ? 'month' : 'day'
   if (direction.value === 'right') currentView.value = currentView.value === 'month' ? 'day' : 'month'
 }
