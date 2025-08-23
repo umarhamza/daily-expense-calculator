@@ -20,12 +20,12 @@ async function sendMessage() {
 
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/30">
-    <div class="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl">
+    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Chat</h2>
         <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>
       </div>
-      <div class="h-56 overflow-y-auto space-y-2 border border-gray-100 rounded-md p-3 mb-3">
+      <div class="h-56 overflow-y-auto space-y-2 border border-gray-100 dark:border-gray-700 rounded-md p-3 mb-3">
         <div v-for="(m, i) in messages" :key="i" class="text-sm" :class="m.role === 'user' ? 'text-right' : 'text-left'">
           <span class="inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'">{{ m.content }}</span>
         </div>

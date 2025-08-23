@@ -5,7 +5,7 @@ function handleNav(target) { emit('navigate', target) }
 </script>
 
 <template>
-  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-sm">
+  <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-sm">
     <ul class="flex justify-around py-2 text-sm">
       <li>
         <button

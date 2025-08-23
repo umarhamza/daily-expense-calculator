@@ -28,14 +28,14 @@ function goToday() {
     </header>
 
     <div class="space-y-2">
-      <div v-for="(e, i) in expenses" :key="i" class="flex items-center justify-between bg-white border border-gray-100 rounded-lg p-3">
+      <div v-for="(e, i) in expenses" :key="i" class="flex items-center justify-between  bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
         <div class="font-medium">{{ e.item }}</div>
-        <div class="text-gray-700">${{ e.cost.toFixed(2) }}</div>
+        <div class="text-gray-700 dark:text-gray-200">${{ e.cost.toFixed(2) }}</div>
       </div>
-      <div v-if="!expenses.length" class="text-center text-gray-500 py-10">No expenses yet</div>
+      <div v-if="!expenses.length" class="text-center text-gray-400 dark:text-gray-400 py-10">No expenses yet</div>
     </div>
 
-    <div class="mt-6 flex items-center justify-between text-gray-800">
+    <div class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200">
       <div class="font-semibold">Total</div>
       <div class="font-semibold">${{ total.toFixed(2) }}</div>
     </div>
