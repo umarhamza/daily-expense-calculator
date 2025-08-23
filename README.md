@@ -30,8 +30,7 @@ Configured via `tailwind.config.js` and `postcss.config.js` using `@tailwindcss/
 Create a `.env` file with:
 
 ```
-VITE_SUPABASE_URL=your-url
-VITE_SUPABASE_ANON_KEY=your-key
+
 ```
 
 The client is initialized in `src/lib/supabase.js` and data queries are stubbed.
