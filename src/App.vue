@@ -5,6 +5,8 @@ import BottomNav from './components/BottomNav.vue'
 import DayView from './components/DayView.vue'
 import MonthView from './components/MonthView.vue'
 import ChatModal from './components/ChatModal.vue'
+import AuthForm from './components/AuthForm.vue'
+import { supabase } from '@/lib/supabase'
 
 const currentView = ref('day') // 'day' | 'month'
 const isChatOpen = ref(false)
@@ -22,8 +24,10 @@ const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + '-01')
 const container = ref(null)
 const { direction, isSwiping } = useSwipe(container, { threshold: 30 })
 
-onMounted(() => {
-  // no-op
+onMounted(async () => {
+  const { data } = await supabase.auth.getSession()
+  session.value = data.session
+  supabase.auth.onAuthStateChange((_, s) => { session.value = s })
 })
 
 /**
@@ -94,14 +98,24 @@ function handleSwipe() {
     }
   }
 }
+
+const session = ref(null)
+const userId = computed(() => session.value?.user?.id)
+
+async function logout() { await supabase.auth.signOut() }
 </script>
 
 <template>
-  <div ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
+  <div v-if="!session" class="min-h-screen">
+    <AuthForm />
+  </div>
+  <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
+    <button class="fixed top-3 right-3 text-sm text-gray-600 dark:text-gray-300" @click="logout">Logout</button>
     <main class="mx-auto max-w-md px-4 pt-4">
       <component :is="currentView === 'day' ? DayView : MonthView"
         :date="selectedDate"
         :monthDate="monthOfSelected"
+        :userId="userId"
         @changeDate="d => (selectedDate = d)"
       />
     </main>

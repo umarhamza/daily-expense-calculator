@@ -1,9 +1,16 @@
 <script setup>
 import { computed, ref, watchEffect } from 'vue'
+import { fetchExpensesByMonth } from '@/lib/supabase'
 
-const props = defineProps({ monthDate: { type: String, required: true } })
+const props = defineProps({ monthDate: { type: String, required: true }, userId: { type: String, required: true } })
 
 const expenses = ref([])
+
+watchEffect(async () => {
+  if (!props.userId || !props.monthDate) { expenses.value = []; return }
+  const { data } = await fetchExpensesByMonth(props.userId, props.monthDate)
+  expenses.value = data ?? []
+})
 
 const grouped = computed(() => {
   const totals = new Map()
