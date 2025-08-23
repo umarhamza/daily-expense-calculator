@@ -23,11 +23,7 @@ jobs:
         run: |
           supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
-      - name: Apply migrations to remote database
-        env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Apply migrations to remote database (IPv4-safe)
         run: |
-          DB_URL="postgres://postgres:${SUPABASE_DB_PASSWORD}@db.${SUPABASE_PROJECT_ID}.supabase.co:5432/postgres"
-          # Runs all pending migrations from supabase/migrations
-          supabase db push --debug --db-url "$DB_URL"
+          supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
+
