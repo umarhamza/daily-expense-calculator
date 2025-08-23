@@ -30,4 +30,4 @@ jobs:
         run: |
           DB_URL="postgres://postgres:${SUPABASE_DB_PASSWORD}@db.${SUPABASE_PROJECT_ID}.supabase.co:5432/postgres"
           # Runs all pending migrations from supabase/migrations
-          supabase db push --db-url "$DB_URL"
+          supabase db push --debug --db-url "$DB_URL"
