@@ -24,26 +24,27 @@ export async function handler(event) {
 			global: { headers: { Authorization: `Bearer ${token}` } },
 		})
 
-		// Q&A: if message asks for spend/total, compute deterministically
-		if (isSpendQuestion(question)) {
+		// 1) Intent detection with Gemini (ADD | QUERY | CLARIFY)
+		const intent = await detectIntent(apiKey, question)
+
+		// 2) Route by intent
+		if (intent === 'ADD') {
+			// Parse and insert items from the same message
+			const addedResult = await tryAddFromNaturalText(apiKey, supabase, question)
+			if (addedResult.added) {
+				return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items } })
+			}
+			// Provide guidance and flag attempt for UI
+			return jsonRes(200, { answer: 'I couldn\'t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.', attemptedAdd: true })
+		}
+
+		if (intent === 'QUERY') {
 			const qaAnswer = await answerSpendQuestion(supabase, question)
 			return jsonRes(200, { answer: qaAnswer })
 		}
 
-		// Explicit add command
-		if (/^add\s+/i.test(question)) {
-			const addResp = await handleAddCommand(supabase, question)
-			return jsonRes(200, addResp)
-		}
-
-		// Natural sentence → items
-		const addedResult = await tryAddFromNaturalText(apiKey, supabase, question)
-		if (addedResult.added) {
-			return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items } })
-		}
-
-		// Ambiguous intent
-		return jsonRes(200, { answer: 'Add items or see total?' })
+		// CLARIFY or unknown → ask user
+		return jsonRes(200, { answer: 'Do you want to add items or see your total?' })
 	} catch (err) {
 		return jsonRes(500, { error: err?.message || 'Unexpected error' })
 	}
@@ -210,6 +211,42 @@ async function callGemini(apiKey, prompt, config) {
 	const data = await res.json()
 	const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate an answer.'
 	return { ok: true, text }
+}
+
+/**
+ * Uses Gemini to classify the user's message intent.
+ * Returns one of: 'ADD' | 'QUERY' | 'CLARIFY'. Defaults to 'CLARIFY' on failure.
+ */
+async function detectIntent(apiKey, message) {
+	const system = [
+		'You are an intent classifier for a personal expense tracker chat.',
+		'Return ONLY valid JSON. No prose. No code fences. No trailing commas.',
+		'Output schema: {"intent":"ADD"|"QUERY"|"CLARIFY"}',
+		'Rules:',
+		'- intent = "ADD" when the user is describing purchases to record (items/quantities/prices/dates).',
+		'- intent = "QUERY" when the user asks about totals, spending by time period, range, or item.',
+		'- If uncertain, intent = "CLARIFY".',
+	].join('\n')
+
+	const prompt = [
+		system,
+		'',
+		'User message:',
+		String(message || ''),
+		'',
+		'Respond with ONLY the JSON object.'
+	].join('\n')
+
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 64 })
+	if (!res.ok) return 'CLARIFY'
+	try {
+		const parsed = JSON.parse((res.text || '').trim())
+		const value = String(parsed?.intent || '').toUpperCase()
+		if (value === 'ADD' || value === 'QUERY' || value === 'CLARIFY') return value
+		return 'CLARIFY'
+	} catch {
+		return 'CLARIFY'
+	}
 }
 
 /**
