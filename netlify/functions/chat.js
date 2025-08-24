@@ -24,6 +24,12 @@ export async function handler(event) {
 			global: { headers: { Authorization: `Bearer ${token}` } },
 		})
 
+		// Fast-path: handle add commands directly (e.g., "add noodles 120", "add bus fare", "add phone credit 50 on 2025-08-24")
+		if (/^add\s+/i.test(question)) {
+			const answer = await handleAddCommand(supabase, question)
+			return jsonRes(200, { answer })
+		}
+
 		// Step 1: Ask Gemini to return STRICT JSON describing what to search
 		const plan = await getSearchPlanFromGemini(apiKey, question)
 
@@ -203,4 +209,71 @@ async function callGemini(apiKey, prompt, config) {
 	const data = await res.json()
 	const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate an answer.'
 	return { ok: true, text }
+}
+
+/**
+ * Parses and inserts an expense from an "add ..." chat command.
+ * Supported forms:
+ * - add noodles 120
+ * - add bus fare
+ * - add phone credit 50 on 2025-08-24
+ * If cost is omitted, defaults to 0. If date is omitted, defaults to today (UTC, YYYY-MM-DD).
+ * Returns a short confirmation message string.
+ */
+async function handleAddCommand(supabase, input) {
+	const parsed = parseAddCommand(input)
+	if (!parsed.ok) return parsed.message
+
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return 'Sorry, you need to be signed in to add an expense.'
+	const userId = userData.user.id
+
+	const payload = { user_id: userId, item: parsed.item, cost: parsed.cost, date: parsed.date }
+	const { error } = await supabase
+		.from('expenses')
+		.insert(payload)
+	if (error) return `Sorry, I couldn't save that: ${error.message}`
+
+	const todayIso = toISO(new Date())
+	const when = parsed.date === todayIso ? 'today' : parsed.date
+	return `Added ${parsed.item} (${Number.isFinite(parsed.cost) ? String(parsed.cost) : '0'}) for ${when}.`
+}
+
+/**
+ * Extracts { item, cost, date } from an add command string.
+ * Returns { ok: true, item, cost, date } or { ok: false, message }.
+ */
+function parseAddCommand(input) {
+	const trimmed = String(input || '').trim()
+	const withoutAdd = trimmed.replace(/^add\s+/i, '').trim()
+	if (!withoutAdd) return { ok: false, message: 'Please specify an item to add.' }
+
+	// Extract explicit date if present at the end: "on YYYY-MM-DD"
+	let work = withoutAdd
+	let date = null
+	const onDateRegex = /\s+on\s+(\d{4}-\d{2}-\d{2})\s*$/i
+	const onDateMatch = work.match(onDateRegex)
+	if (onDateMatch) {
+		const candidate = onDateMatch[1]
+		if (isISODate(candidate)) date = candidate
+		work = work.replace(onDateRegex, '').trim()
+	}
+
+	// Extract trailing numeric cost if present
+	let cost = 0
+	const costMatch = work.match(/(-?\d+(?:\.\d+)?)\s*$/)
+	if (costMatch) {
+		const parsedNumber = Number.parseFloat(costMatch[1])
+		if (Number.isFinite(parsedNumber)) {
+			cost = parsedNumber
+			work = work.slice(0, work.length - costMatch[0].length).trim()
+		}
+	}
+
+	const item = work.trim()
+	if (!item) return { ok: false, message: 'Please provide an item name.' }
+
+	const finalDate = date || toISO(new Date())
+	return { ok: true, item, cost, date: finalDate }
 }
