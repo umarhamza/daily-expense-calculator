@@ -24,32 +24,26 @@ export async function handler(event) {
 			global: { headers: { Authorization: `Bearer ${token}` } },
 		})
 
-		// Fast-path: handle add commands directly (e.g., "add noodles 120", "add bus fare", "add phone credit 50 on 2025-08-24")
-		if (/^add\s+/i.test(question)) {
-			const answer = await handleAddCommand(supabase, question)
-			return jsonRes(200, { answer })
+		// Q&A: if message asks for spend/total, compute deterministically
+		if (isSpendQuestion(question)) {
+			const qaAnswer = await answerSpendQuestion(supabase, question)
+			return jsonRes(200, { answer: qaAnswer })
 		}
 
-		// Attempt to parse a natural-language purchase message via Gemini and insert expenses
+		// Explicit add command
+		if (/^add\s+/i.test(question)) {
+			const addResp = await handleAddCommand(supabase, question)
+			return jsonRes(200, addResp)
+		}
+
+		// Natural sentence → items
 		const addedResult = await tryAddFromNaturalText(apiKey, supabase, question)
 		if (addedResult.added) {
-			return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items }, attemptedAdd: true })
+			return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items } })
 		}
-		const attemptedAdd = addedResult.attempted === true
 
-		// Step 1: Ask Gemini to return STRICT JSON describing what to search
-		const plan = await getSearchPlanFromGemini(apiKey, question)
-
-		// Step 2: Query the user's expenses using the plan (falls back if needed)
-		const { data: expenses, error: sbError } = await queryExpensesByPlan(supabase, plan)
-		if (sbError) return jsonRes(500, { error: sbError.message })
-
-		// Step 3: Ask Gemini to answer using the original question + fetched expenses
-		const answerPrompt = buildAnswerPrompt(question, expenses || [])
-		const aiResponse = await callGemini(apiKey, answerPrompt, { temperature: 0.2, maxOutputTokens: 640 })
-		if (!aiResponse.ok) return jsonRes(500, { error: aiResponse.error || 'AI request failed' })
-
-		return jsonRes(200, { answer: aiResponse.text, attemptedAdd })
+		// Ambiguous intent
+		return jsonRes(200, { answer: 'Add items or see total?' })
 	} catch (err) {
 		return jsonRes(500, { error: err?.message || 'Unexpected error' })
 	}
@@ -326,22 +320,24 @@ function normalizeDatePhrase(dateLike) {
  */
 async function handleAddCommand(supabase, input) {
 	const parsed = parseAddCommand(input)
-	if (!parsed.ok) return parsed.message
+	if (!parsed.ok) return { answer: parsed.message }
 
 	// Resolve authenticated user
 	const { data: userData, error: userErr } = await supabase.auth.getUser()
-	if (userErr || !userData?.user?.id) return 'Sorry, you need to be signed in to add an expense.'
+	if (userErr || !userData?.user?.id) return { answer: 'Sorry, you need to be signed in to add an expense.' }
 	const userId = userData.user.id
 
 	const payload = { user_id: userId, item: parsed.item, cost: parsed.cost, date: parsed.date }
-	const { error } = await supabase
+	const { data: inserted, error } = await supabase
 		.from('expenses')
 		.insert(payload)
-	if (error) return `Sorry, I couldn't save that: ${error.message}`
+		.select('id,item,cost,date,created_at')
+	if (error) return { answer: `Sorry, I couldn't save that: ${error.message}` }
 
 	const todayIso = toISO(new Date())
 	const when = parsed.date === todayIso ? 'today' : parsed.date
-	return `Added ${parsed.item} (${Number.isFinite(parsed.cost) ? String(parsed.cost) : '0'}) for ${when}.`
+	const answer = `Added: ${parsed.item} (${Number.isFinite(parsed.cost) ? String(parsed.cost) : '0'}) for ${when}.`
+	return { answer, added: { date: parsed.date, items: [{ item: parsed.item, cost: parsed.cost || 0 }] } }
 }
 
 /**
@@ -380,4 +376,120 @@ function parseAddCommand(input) {
 
 	const finalDate = date || toISO(new Date())
 	return { ok: true, item, cost, date: finalDate }
+}
+
+/**
+ * Returns true if the question is asking for spend totals.
+ */
+function isSpendQuestion(q) {
+	const s = String(q || '').toLowerCase()
+	if (!s) return false
+	return /how\s+much|total|spend|spent|between\s+\d{4}-\d{2}-\d{2}\s+(?:and|to)\s+\d{4}-\d{2}-\d{2}|this\s+(?:week|month)|today|yesterday/.test(s)
+}
+
+/**
+ * Parses period and optional item from question and returns an object
+ * { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', label: string, item: string|null }
+ */
+function parseSpendQuery(question) {
+	const s = String(question || '').toLowerCase()
+	const today = toISO(new Date())
+
+	// between YYYY-MM-DD and YYYY-MM-DD
+	const between = s.match(/between\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to|-)\s+(\d{4}-\d{2}-\d{2})/)
+	if (between && isISODate(between[1]) && isISODate(between[2])) {
+		const from = between[1]
+		const to = between[2]
+		const item = extractItemFilter(s)
+		return { from, to, label: `between ${from} and ${to}`, item }
+	}
+
+	// today / yesterday / this week / this month
+	if (s.includes('today')) {
+		return { from: today, to: today, label: 'today', item: extractItemFilter(s) }
+	}
+	if (s.includes('yesterday')) {
+		const d = new Date(Date.parse(today))
+		const prev = new Date(d.getTime() - 24 * 60 * 60 * 1000)
+		const y = toISO(prev)
+		return { from: y, to: y, label: 'yesterday', item: extractItemFilter(s) }
+	}
+	if (s.includes('this week')) {
+		const now = new Date(Date.parse(today))
+		const day = now.getUTCDay() || 7 // 1..7 with Monday=1
+		const monday = new Date(now.getTime() - (day - 1) * 24 * 60 * 60 * 1000)
+		const from = toISO(monday)
+		const to = today
+		return { from, to, label: 'this week', item: extractItemFilter(s) }
+	}
+	if (s.includes('this month')) {
+		const d = new Date(Date.parse(today))
+		const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+		const from = toISO(first)
+		const to = today
+		return { from, to, label: 'this month', item: extractItemFilter(s) }
+	}
+
+	// Default last 30 days
+	const fromDate = new Date(Date.parse(today) - 30 * 24 * 60 * 60 * 1000)
+	return { from: toISO(fromDate), to: today, label: 'last 30 days', item: extractItemFilter(s) }
+}
+
+function extractItemFilter(s) {
+	const m = s.match(/on\s+([a-z0-9\s\-]+)/)
+	if (!m) return null
+	return m[1].replace(/\s*(today|yesterday|this week|this month|between.*)$/,'').trim().replace(/[?.!,]+$/,'') || null
+}
+
+function getBaseItemName(item) {
+	const s = String(item || '').toLowerCase().trim()
+	const m = s.match(/^(.*)\s+x\d+$/)
+	return (m ? m[1] : s).trim()
+}
+
+function formatDalasi(amount) {
+	const isInt = Number.isInteger(amount)
+	const nf = new Intl.NumberFormat('en-US', { minimumFractionDigits: isInt ? 0 : 2, maximumFractionDigits: isInt ? 0 : 2 })
+	return `D${nf.format(amount)}`
+}
+
+/**
+ * Answers spend questions deterministically using Supabase totals.
+ */
+async function answerSpendQuestion(supabase, question) {
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return 'Sorry, I could not verify your account.'
+	const userId = userData.user.id
+
+	const { from, to, label, item } = parseSpendQuery(question)
+
+	let query = supabase
+		.from('expenses')
+		.select('item,cost,date')
+		.eq('user_id', userId)
+		.gte('date', from)
+		.lte('date', to)
+
+	// If there is an item, narrow server-side to reduce rows
+	if (item) {
+		const like = `${item}%`
+		query = query.ilike('item', like)
+	}
+
+	const { data, error } = await query
+	if (error) return 'Sorry, I could not fetch your expenses.'
+
+	const baseFilter = item ? item.toLowerCase().trim() : null
+	const total = (data || []).reduce((sum, row) => {
+		if (baseFilter) {
+			if (getBaseItemName(row.item) !== baseFilter) return sum
+		}
+		const v = Number.parseFloat(row.cost)
+		return sum + (Number.isFinite(v) ? v : 0)
+	}, 0)
+
+	const amount = formatDalasi(total)
+	const suffix = baseFilter ? ` on ${baseFilter} ${label}.` : ` ${label}.`
+	return `${amount}${suffix}`
 }
