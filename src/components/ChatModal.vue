@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
+import { showErrorToast } from '@/lib/toast'
 
 const emit = defineEmits(['close'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -42,6 +43,7 @@ async function sendMessage() {
 	} catch (err) {
 		messages.value[pendingIndex] = { role: 'assistant', content: 'Sorry, I had trouble answering that.' }
 		errorMessage.value = err?.message || 'Something went wrong'
+		showErrorToast(errorMessage.value)
 	} finally {
 		isSending.value = false
 	}
