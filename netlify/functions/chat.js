@@ -1,4 +1,4 @@
-exports.handler = async function(event) {
+export async function handler(event) {
 	if (event.httpMethod !== 'POST') {
 		return jsonRes(405, { error: 'Method not allowed' })
 	}
@@ -130,9 +130,16 @@ function toISO(d) {
  * Selects item,cost,date for the authenticated user (via RLS) and returns { data, error }.
  */
 async function queryExpensesByPlan(supabase, plan) {
+	// Resolve authenticated user to scope queries
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr) return { data: null, error: userErr }
+	const userId = userData?.user?.id
+	if (!userId) return { data: null, error: new Error('Not authenticated') }
+
 	let query = supabase
 		.from('expenses')
 		.select('item,cost,date')
+		.eq('user_id', userId)
 		.order('date', { ascending: false })
 		.limit(500)
 
