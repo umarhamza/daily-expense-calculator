@@ -26,3 +26,27 @@ export function formatMonth(isoMonthStart) {
   }).format(date)
 }
 
+/**
+ * Format a YYYY-MM-DD ISO date into a compact string like "Sun 12th".
+ * Input: isoDate (e.g., "2025-08-20"). Output: e.g., "Wed 20th".
+ */
+export function formatDayShort(isoDate) {
+  const date = new Date(isoDate)
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date)
+  const day = date.getUTCDate()
+  const suffix = getOrdinalSuffix(day)
+  return `${weekday} ${day}${suffix}`
+}
+
+/**
+ * Return ordinal suffix for a day number (1 -> 'st', 2 -> 'nd', 3 -> 'rd', 4 -> 'th', ...).
+ */
+function getOrdinalSuffix(day) {
+  if (day % 100 >= 11 && day % 100 <= 13) return 'th'
+  const last = day % 10
+  if (last === 1) return 'st'
+  if (last === 2) return 'nd'
+  if (last === 3) return 'rd'
+  return 'th'
+}
+

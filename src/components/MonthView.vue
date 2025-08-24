@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
-import { formatMonth } from "@/lib/date";
+import { formatMonth, formatDayShort } from "@/lib/date";
 import { showErrorToast } from "@/lib/toast";
 
 const props = defineProps({
@@ -21,17 +21,49 @@ watchEffect(async () => {
   expenses.value = data ?? [];
 });
 
-const grouped = computed(() => {
-  const totals = new Map();
+/**
+ * Extract the base item name by removing trailing quantity suffixes like " x2" or "x3".
+ * Input: item string (e.g., "bread x3"). Output: base string (e.g., "bread").
+ */
+function getBaseItemName(item) {
+  if (!item) return "";
+  return item.replace(/\s*[xX×]\s*\d+\s*$/u, "").trim();
+}
+
+const groups = computed(() => {
+  const byBase = new Map();
   for (const e of expenses.value) {
-    const prev = totals.get(e.item) ?? 0;
-    totals.set(e.item, prev + e.cost);
+    const base = getBaseItemName(e.item);
+    if (!byBase.has(base)) byBase.set(base, { base, items: [], sum: 0 });
+    const bucket = byBase.get(base);
+    bucket.items.push(e);
+    bucket.sum += e.cost;
   }
-  return Array.from(totals.entries()).map(([item, sum]) => ({ item, sum }));
+  const arr = Array.from(byBase.values());
+  for (const g of arr) {
+    g.items.sort((a, b) => {
+      if (a.date === b.date) return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+      return b.date.localeCompare(a.date);
+    });
+    g.count = g.items.length;
+  }
+  arr.sort((a, b) => a.base.localeCompare(b.base));
+  return arr;
 });
 
-const grandTotal = computed(() => grouped.value.reduce((s, g) => s + g.sum, 0));
+const grandTotal = computed(() => expenses.value.reduce((s, e) => s + e.cost, 0));
 const formattedMonth = computed(() => formatMonth(props.monthDate));
+
+// Track expanded states by base name; allow multiple open
+const expanded = ref(new Set());
+function toggleExpanded(base) {
+  const next = new Set(expanded.value);
+  if (next.has(base)) next.delete(base); else next.add(base);
+  expanded.value = next;
+}
+function isExpanded(base) {
+  return expanded.value.has(base);
+}
 </script>
 
 <template>
@@ -41,18 +73,44 @@ const formattedMonth = computed(() => formatMonth(props.monthDate));
     </header>
 
     <div class="space-y-2">
-      <div
-        v-for="g in grouped"
-        :key="g.item"
-        class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3"
-      >
-        <div class="font-medium">{{ g.item }}</div>
-        <div class="text-gray-700 dark:text-gray-200">
-          D{{ g.sum.toFixed(2) }}
+      <template v-for="g in groups" :key="g.base">
+        <div
+          class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3 cursor-pointer select-none"
+          @click="toggleExpanded(g.base)"
+        >
+          <div class="font-medium">{{ g.base }} <span class="text-gray-500">({{ g.count }})</span></div>
+          <div class="text-gray-700 dark:text-gray-200 flex items-center gap-2">
+            <span>D{{ g.sum.toFixed(2) }}</span>
+            <svg
+              :class="isExpanded(g.base) ? 'rotate-180' : ''"
+              class="w-4 h-4 text-gray-500 transition-transform"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+            </svg>
+          </div>
         </div>
-      </div>
+        <div
+          class="overflow-hidden transition-all duration-200 bg-white/70 dark:bg-gray-800/70 border border-t-0 border-gray-100 dark:border-gray-700 rounded-b-lg -mt-2"
+          :class="isExpanded(g.base) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'"
+        >
+          <ul class="divide-y divide-gray-100 dark:divide-gray-700">
+            <li
+              v-for="e in g.items"
+              :key="e.id"
+              class="flex items-center justify-between px-3 py-2"
+            >
+              <div class="text-sm text-gray-800 dark:text-gray-200">{{ e.item }}</div>
+              <div class="text-sm text-gray-500">{{ formatDayShort(e.date) }}</div>
+              <div class="text-sm text-gray-800 dark:text-gray-200">D{{ e.cost.toFixed(2) }}</div>
+            </li>
+          </ul>
+        </div>
+      </template>
       <div
-        v-if="!grouped.length"
+        v-if="!groups.length"
         class="text-center text-gray-400 dark:text-gray-400 py-10"
       >
         No data for this month
