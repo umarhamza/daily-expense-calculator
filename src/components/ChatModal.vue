@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
+import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -10,6 +12,8 @@ const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }
 const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
+const { sheetStyle } = useKeyboardBottomOffset()
+useBodyScrollLock(() => props.isOpen)
 
 async function sendMessage() {
 	const q = input.value.trim()
@@ -67,7 +71,7 @@ async function sendMessage() {
 
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/30">
-    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl">
+    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl" :style="sheetStyle">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Chat</h2>
         <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>

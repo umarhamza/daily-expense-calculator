@@ -1,5 +1,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
+import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 
 const emit = defineEmits(['close', 'save', 'delete'])
 const props = defineProps({
@@ -20,6 +22,9 @@ watch(() => props.expense, (e) => {
 
 const isValid = computed(() => !!item.value && !Number.isNaN(Number.parseFloat(cost.value)) && /^\d{4}-\d{2}-\d{2}$/.test(date.value))
 
+const { sheetStyle } = useKeyboardBottomOffset()
+useBodyScrollLock(() => props.isOpen)
+
 function handleSave() {
   const parsedCost = Number.parseFloat(cost.value)
   if (!isValid.value) return
@@ -33,7 +38,7 @@ function handleDelete() {
 
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/30">
-    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl">
+    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl" :style="sheetStyle">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Edit Expense</h2>
         <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>
