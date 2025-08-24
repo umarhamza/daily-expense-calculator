@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bmad:install": "npx bmad-method install",
+    "bmad:update": "npx bmad-method update",
+    "bmad:flatten": "npx bmad-method flatten"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",
