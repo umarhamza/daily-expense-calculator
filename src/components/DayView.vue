@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watchEffect } from "vue";
+import { ref, computed, watchEffect, watch } from "vue";
 import AddExpenseModal from "./AddExpenseModal.vue";
 import { fetchExpensesByDate, insertExpense } from "@/lib/supabase";
 import { formatDay } from "@/lib/date";
@@ -14,6 +14,7 @@ const selectedExpense = ref(null);
 const props = defineProps({
   date: { type: String, required: true },
   userId: { type: String, required: true },
+  refreshKey: { type: Number, default: 0 },
 });
 const emit = defineEmits(["changeDate"]);
 
@@ -34,6 +35,14 @@ watchEffect(async () => {
   expenses.value = data ?? [];
   isLoading.value = false;
   lastDate.value = props.date;
+});
+
+// Silent refetch on refreshKey changes without showing loading skeletons
+watch(() => props.refreshKey, async () => {
+  if (!props.userId || !props.date) return;
+  const { data, error } = await fetchExpensesByDate(props.userId, props.date);
+  if (error) showErrorToast(error.message);
+  expenses.value = data ?? [];
 });
 
 function openModal() {

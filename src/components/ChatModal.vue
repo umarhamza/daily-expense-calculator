@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
 
 const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }])
@@ -39,7 +39,22 @@ async function sendMessage() {
 		const json = await res.json().catch(() => ({}))
 		if (!res.ok) throw new Error(json.error || 'Failed to get answer')
 
+		// If backend added items, emit to parent and show confirmation
+		if (json.added && Array.isArray(json.added.items) && json.added.items.length) {
+			emit('added', json.added)
+			messages.value[pendingIndex] = { role: 'assistant', content: json.answer }
+			return
+		}
+
+		// If an add attempt was made but no items parsed, show guidance
+		if (json.attemptedAdd) {
+			messages.value[pendingIndex] = { role: 'assistant', content: 'I couldn’t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.' }
+			return
+		}
+
+		// Otherwise, show the general answer
 		messages.value[pendingIndex] = { role: 'assistant', content: json.answer }
+		return
 	} catch (err) {
 		messages.value[pendingIndex] = { role: 'assistant', content: 'Sorry, I had trouble answering that.' }
 		errorMessage.value = err?.message || 'Something went wrong'
