@@ -83,11 +83,13 @@ export async function deleteExpense(userId, id) {
 /**
  * Autocomplete items based on partial query using ILIKE on item.
  */
-export async function fetchAutocompleteItems(partial) {
+export async function fetchAutocompleteItems(partial, userId) {
   if (!partial) return { data: [], error: null }
+  if (!userId) return { data: [], error: new Error('Missing userId') }
   const { data, error } = await supabase
     .from('expenses')
     .select('item')
+    .eq('user_id', userId)
     .ilike('item', `%${partial}%`)
     .limit(10)
   const unique = Array.from(new Set((data ?? []).map(r => r.item)))
