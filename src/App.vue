@@ -22,6 +22,8 @@ const selectedDate = ref(todayIso)
 
 const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + '-01')
 
+const refreshKey = ref(0)
+
 const container = ref(null)
 const { direction, isSwiping } = useSwipe(container, { threshold: 30 })
 
@@ -100,6 +102,12 @@ function handleSwipe() {
   }
 }
 
+function handleAddedFromChat(payload) {
+  const addedDate = String(payload?.date || '').slice(0, 10)
+  if (addedDate && addedDate !== selectedDate.value) selectedDate.value = addedDate
+  refreshKey.value++
+}
+
 const session = ref(null)
 const userId = computed(() => session.value?.user?.id)
 
@@ -117,13 +125,14 @@ async function logout() { await supabase.auth.signOut() }
         :date="selectedDate"
         :monthDate="monthOfSelected"
         :userId="userId"
+        :refreshKey="refreshKey"
         @changeDate="d => (selectedDate = d)"
       />
     </main>
 
     <BottomNav :current="currentView" @navigate="handleNavigate" />
 
-    <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" />
+    <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" @added="handleAddedFromChat" />
   </div>
   <Toasts />
 </template>

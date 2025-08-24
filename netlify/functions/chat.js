@@ -30,6 +30,13 @@ export async function handler(event) {
 			return jsonRes(200, { answer })
 		}
 
+		// Attempt to parse a natural-language purchase message via Gemini and insert expenses
+		const addedResult = await tryAddFromNaturalText(apiKey, supabase, question)
+		if (addedResult.added) {
+			return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items }, attemptedAdd: true })
+		}
+		const attemptedAdd = addedResult.attempted === true
+
 		// Step 1: Ask Gemini to return STRICT JSON describing what to search
 		const plan = await getSearchPlanFromGemini(apiKey, question)
 
@@ -42,7 +49,7 @@ export async function handler(event) {
 		const aiResponse = await callGemini(apiKey, answerPrompt, { temperature: 0.2, maxOutputTokens: 640 })
 		if (!aiResponse.ok) return jsonRes(500, { error: aiResponse.error || 'AI request failed' })
 
-		return jsonRes(200, { answer: aiResponse.text })
+		return jsonRes(200, { answer: aiResponse.text, attemptedAdd })
 	} catch (err) {
 		return jsonRes(500, { error: err?.message || 'Unexpected error' })
 	}
@@ -209,6 +216,103 @@ async function callGemini(apiKey, prompt, config) {
 	const data = await res.json()
 	const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate an answer.'
 	return { ok: true, text }
+}
+
+/**
+ * Tries to parse a natural sentence describing purchases into structured JSON using Gemini,
+ * inserts expense rows for the authenticated user, and returns a summary.
+ * If parsing fails or no items found, returns { added: false }.
+ */
+async function tryAddFromNaturalText(apiKey, supabase, text) {
+	const schema = [
+		'{',
+		'  "items": [',
+		'    { "name": string, "quantity": number, "unitPrice": number optional, "total": number optional }',
+		'  ],',
+		'  "date": string // "today" | "yesterday" | "YYYY-MM-DD"',
+		'}',
+	].join('\n')
+
+	const prompt = [
+		'Extract shopping items from the user message and return ONLY strict JSON. No prose, no code fences, no comments.',
+		'Match this schema exactly with lowercase item names and defaults: quantity defaults to 1; if price is missing, set unitPrice to 0 and total to 0; total should equal quantity * unitPrice when prices are present.',
+		'Schema:',
+		schema,
+		'',
+		'Examples:',
+		'{"items":[{"name":"bread","quantity":3,"unitPrice":12,"total":36},{"name":"egg","quantity":2,"unitPrice":15,"total":30},{"name":"potato","quantity":5,"unitPrice":10,"total":50}],"date":"today"}',
+		'',
+		'User message:',
+		text,
+	].join('\n')
+
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 256 })
+	if (!res.ok) return { added: false, attempted: true }
+
+	let parsed
+	try {
+		parsed = JSON.parse((res.text || '').trim())
+	} catch {
+		return { added: false, attempted: true }
+	}
+
+	const items = Array.isArray(parsed?.items) ? parsed.items : []
+	if (!items.length) {
+		return { added: false, attempted: true }
+	}
+
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { added: false, attempted: true }
+	const userId = userData.user.id
+
+	// Normalize date
+	const isoDate = normalizeDatePhrase(parsed?.date)
+
+	// Build payloads
+	const rows = []
+	for (const raw of items) {
+		const name = String(raw?.name || '').trim().toLowerCase()
+		if (!name) continue
+		const quantityRaw = Number.parseFloat(raw?.quantity)
+		const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.round(quantityRaw) : 1
+		const unitPriceRaw = Number.parseFloat(raw?.unitPrice)
+		const unitPrice = Number.isFinite(unitPriceRaw) ? unitPriceRaw : 0
+		const totalRaw = Number.parseFloat(raw?.total)
+		const total = Number.isFinite(totalRaw) ? totalRaw : (quantity * unitPrice)
+		rows.push({ user_id: userId, item: `${name} x${quantity}`, cost: total || 0, date: isoDate })
+	}
+
+	if (!rows.length) return { added: false, attempted: true }
+
+	const { data: inserted, error } = await supabase
+		.from('expenses')
+		.insert(rows)
+		.select('id,item,cost,date,created_at')
+	if (error) return { added: false, attempted: true }
+
+	// Build summary
+	const parts = rows.map(r => `${r.item} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
+	const when = isoDate === toISO(new Date()) ? 'today' : isoDate
+	const summary = `Added: ${parts.join(', ')} for ${when}.`
+	return { added: true, summary, date: isoDate, items: rows.map(r => ({ item: r.item, cost: r.cost })), attempted: true }
+}
+
+/**
+ * Converts common date words or ISO dates to YYYY-MM-DD (UTC) string. Defaults to today.
+ */
+function normalizeDatePhrase(dateLike) {
+	const todayIso = toISO(new Date())
+	if (!dateLike) return todayIso
+	const s = String(dateLike || '').trim().toLowerCase()
+	if (s === 'today') return todayIso
+	if (s === 'yesterday') {
+		const d = new Date(Date.parse(todayIso))
+		const prev = new Date(d.getTime() - 24 * 60 * 60 * 1000)
+		return toISO(prev)
+	}
+	const candidate = s.slice(0, 10)
+	return isISODate(candidate) ? candidate : todayIso
 }
 
 /**

@@ -14,6 +14,7 @@ const selectedExpense = ref(null);
 const props = defineProps({
   date: { type: String, required: true },
   userId: { type: String, required: true },
+  refreshKey: { type: Number, default: 0 },
 });
 const emit = defineEmits(["changeDate"]);
 
@@ -27,7 +28,7 @@ watchEffect(async () => {
     expenses.value = [];
     return;
   }
-  const isPrevious = props.date < lastDate.value;
+  const isPrevious = props.date < lastDate.value || props.refreshKey !== 0;
   isLoading.value = isPrevious;
   const { data, error } = await fetchExpensesByDate(props.userId, props.date);
   if (error) showErrorToast(error.message);
