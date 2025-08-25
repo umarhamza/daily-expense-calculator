@@ -1,0 +1,106 @@
+# Cursor Rules for this project
+
+These rules guide all code generation, edits, and assistant behavior in this repository.
+They complement existing tooling and configs. Prefer smallest, targeted edits.
+
+## Project Context
+- Stack: Vue 3 + Vite 7, TailwindCSS 4, Supabase, Bun runtime
+- Supabase client lives at `src/lib/supabase.js`
+- Import alias: `@` → `src`
+- Node engines: `^20.19.0 || >=22.12.0`
+- Scripts: `npm run dev`, `npm run build`, `npm run preview`
+
+## Global Principles
+- Prefer functional, declarative patterns; avoid classes.
+- Use `function` declarations for pure utilities and module exports.
+- Keep code self-explanatory; minimal comments. Add concise block comments above functions when needed.
+- Use descriptive names (e.g., `isLoading`, `hasError`).
+- Use early returns; avoid deep nesting.
+- Throw on exceptional states; do not add silent fallbacks. Handle user messaging at UI boundaries.
+- Avoid enums; use object maps.
+- Stay in JavaScript unless TypeScript is explicitly requested.
+
+## Code Style
+- Optimize for clarity and readability; prefer small, composable functions over duplication.
+- New functions must include a short block comment describing purpose, inputs, outputs, and errors thrown.
+- Match existing formatting; do not reformat unrelated code.
+- Prefer explicit named exports; avoid default exports when practical.
+- Keep edits minimal and scoped to the task; avoid sweeping refactors.
+
+## File and Directory Conventions
+- `src/components`: UI components. Avoid direct network calls in purely presentational components.
+- `src/lib`: Framework-agnostic utilities and data-access (including Supabase).
+- `public/`: Static assets only.
+- Import using `@/...` instead of deep relative paths.
+
+## Vue 3 Guidelines
+- Prefer Single File Components with `<script setup>` and Composition API.
+- Use `ref`/`computed` and `@vueuse/core` composables where useful.
+- Emit events from children; keep state lifting minimal.
+- Keep components lean; split when they grow too large.
+- Maintain component contracts (props, emits). If changing, update all call sites in the same PR.
+
+## TailwindCSS 4 Guidelines
+- Prefer utility-first classes in templates; avoid inline `style`.
+- Keep global CSS minimal; use `src/assets/main.css` for app-wide primitives.
+- Reuse existing utility patterns (e.g., `max-w-md`, spacing scale, neutral backgrounds).
+- Use `@apply` sparingly and only for repeated patterns.
+
+## Data Access and Supabase
+- Centralize Supabase interactions in `src/lib` modules. Do not call Supabase directly from presentational components.
+- Require env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- Sanitize and validate inputs at data-access boundaries before persistence.
+- Throw errors from `src/lib`; handle and display user-facing messages at UI boundaries.
+- Never log secrets or full Supabase keys.
+
+## Imports and Aliases
+- Use `@/` alias for imports from `src`.
+- Group imports by external → internal without introducing new formatting rules.
+
+## Tooling & Commands
+- Use provided scripts:
+  - Dev: `npm run dev`
+  - Build: `npm run build`
+  - Preview: `npm run preview`
+- Do not change Node engines or bump major dependencies without explicit request.
+- Do not edit lock files manually.
+
+## Security
+- Never log secrets, tokens, or full Supabase keys.
+- Do not commit `.env*` files.
+- Validate and sanitize inputs before persistence.
+
+## Refactoring
+- Prefer incremental, scoped refactors.
+- Maintain component contracts unless all call sites are updated in the same change.
+
+## Out of Scope Unless Requested
+- Introducing TypeScript, state managers, testing frameworks, routing, or auth.
+- Global design system rewrites or Tailwind theme overhauls.
+
+## Assistant Behavior in this Repo (Cursor)
+- Make the smallest possible edits and preserve existing indentation and formatting.
+- Proceed without unnecessary confirmations; state assumptions and continue.
+- After substantive code edits or schema changes, run a build and fix failures before concluding.
+- Prefer absolute paths when referencing files or running terminal actions.
+- Avoid generating long or binary artifacts. Ensure generated code is runnable with required imports.
+- Create small modules rather than growing large files; keep exports explicit and named.
+- Follow error-handling policy: throw in library layers; surface messaging in UI.
+
+## Commit / PR Guidance
+- Describe user-facing impact and any migrations clearly.
+- Keep PRs focused; avoid mixed concerns.
+
+## Snippet Template
+```js
+/**
+ * One-line purpose.
+ * Inputs: describe parameters.
+ * Returns: describe output.
+ * Throws: describe error conditions.
+ */
+function example(arg) {
+  if (!arg) throw new Error('arg is required')
+}
+export { example }
+```
