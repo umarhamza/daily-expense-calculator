@@ -120,8 +120,8 @@ async function logout() { await supabase.auth.signOut() }
       <AuthForm />
     </div>
     <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
-      <button class="fixed top-3 right-3 text-sm text-gray-600 dark:text-gray-300" @click="logout">Logout</button>
-      <main class="mx-auto max-w-md px-4 pt-4">
+      <v-btn class="fixed top-2 right-2" size="small" variant="text" @click="logout">Logout</v-btn>
+      <main class="mx-auto max-w-md px-3 pt-3">
         <component :is="currentView === 'day' ? DayView : MonthView"
           :date="selectedDate"
           :monthDate="monthOfSelected"

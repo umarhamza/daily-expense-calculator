@@ -1,9 +1,6 @@
 <script setup>
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
-import { showErrorToast } from '@/lib/toast'
-import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
-import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -12,8 +9,6 @@ const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }
 const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
-const { sheetStyle } = useKeyboardBottomOffset()
-useBodyScrollLock(() => props.isOpen)
 
 async function sendMessage() {
 	const q = input.value.trim()
@@ -62,7 +57,6 @@ async function sendMessage() {
 	} catch (err) {
 		messages.value[pendingIndex] = { role: 'assistant', content: 'Sorry, I had trouble answering that.' }
 		errorMessage.value = err?.message || 'Something went wrong'
-		showErrorToast(errorMessage.value)
 	} finally {
 		isSending.value = false
 	}
@@ -70,22 +64,35 @@ async function sendMessage() {
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/30">
-    <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl" :style="sheetStyle">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Chat</h2>
-        <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>
-      </div>
-      <div class="h-56 overflow-y-auto space-y-2 border border-gray-100 dark:border-gray-700 rounded-md p-3 mb-3">
-        <div v-for="(m, i) in messages" :key="i" class="text-sm" :class="m.role === 'user' ? 'text-right' : 'text-left'">
-          <span class="inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'">{{ m.content }}</span>
-        </div>
-      </div>
-      <p v-if="errorMessage" class="text-sm text-red-600 mb-2">{{ errorMessage }}</p>
-      <div class="flex items-center gap-2">
-        <input class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" v-model="input" :disabled="isSending" placeholder="Ask a question..." @keydown.enter="sendMessage" />
-        <button class="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-50" :disabled="isSending" @click="sendMessage">{{ isSending ? 'Sending…' : 'Send' }}</button>
-      </div>
-    </div>
-  </div>
+	<v-dialog
+		:model-value="isOpen"
+		@update:model-value="val => { if (!val) $emit('close') }"
+	>
+		<v-card>
+			<v-card-title class="d-flex align-center justify-space-between">
+				<span class="text-h6">Chat</span>
+				<v-btn icon="mdi-close" variant="text" @click="$emit('close')" aria-label="Close" />
+			</v-card-title>
+			<v-card-text class="pt-0">
+				<v-sheet class="pa-3 mb-3" rounded="md" border style="max-height: 260px; overflow-y: auto;">
+					<div v-for="(m, i) in messages" :key="i" class="text-body-2" :class="m.role === 'user' ? 'text-right' : 'text-left'">
+						<span class="d-inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-grey-lighten-3 text-grey-darken-4'">{{ m.content }}</span>
+					</div>
+				</v-sheet>
+				<v-alert v-if="errorMessage" type="error" density="comfortable" class="mb-2">{{ errorMessage }}</v-alert>
+				<div class="d-flex align-center" style="gap: 8px;">
+					<v-text-field
+						v-model="input"
+						label="Ask a question..."
+						variant="outlined"
+						:disabled="isSending"
+						@keydown.enter="sendMessage"
+						hide-details
+						class="flex-1"
+					/>
+					<v-btn color="primary" :loading="isSending" :disabled="isSending" @click="sendMessage">Send</v-btn>
+				</div>
+			</v-card-text>
+		</v-card>
+	</v-dialog>
 </template>
