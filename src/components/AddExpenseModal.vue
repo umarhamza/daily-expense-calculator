@@ -11,7 +11,21 @@ const item = ref('')
 const cost = ref('')
 const suggestions = ['Bread', 'Milk', 'Coffee', 'Groceries', 'Taxi', 'Dinner', 'Snacks']
 
-const isValid = computed(() => !!item.value && !Number.isNaN(Number.parseFloat(cost.value)))
+function normalizeCostString(input) {
+	const raw = String(input ?? '')
+	const replaced = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+	const parts = replaced.split('.')
+	if (parts.length > 2) {
+		return parts[0] + '.' + parts.slice(1).join('').replace(/\./g, '')
+	}
+	return replaced
+}
+
+function onCostInput(val) {
+	cost.value = normalizeCostString(val)
+}
+
+const isValid = computed(() => !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)))
 
 function handleSave() {
 	const parsed = Number.parseFloat(cost.value)
@@ -46,10 +60,12 @@ function handleSave() {
 					inputmode="decimal"
 					variant="outlined"
 					hide-details="auto"
+					@update:model-value="onCostInput"
 					class="mt-3"
 				/>
 			</v-card-text>
 			<v-card-actions class="justify-end">
+				<v-btn variant="text" @click="$emit('close')">Cancel</v-btn>
 				<v-btn color="primary" :disabled="!isValid" @click="handleSave">Save</v-btn>
 			</v-card-actions>
 		</v-card>
