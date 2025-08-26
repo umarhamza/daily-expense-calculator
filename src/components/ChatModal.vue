@@ -1,9 +1,11 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
 import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
+import { useSpeechToText } from '@/lib/useSpeechToText'
+import IconMicrophone from './icons/IconMicrophone.vue'
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -14,6 +16,21 @@ const isSending = ref(false)
 const errorMessage = ref('')
 const { sheetStyle } = useKeyboardBottomOffset()
 useBodyScrollLock(() => props.isOpen)
+
+// Voice to text
+const { isSupported: isSttSupported, isListening, transcript, errorMessage: sttError, start: startStt, stop: stopStt } = useSpeechToText()
+
+watch(transcript, (t) => {
+  if (t && typeof t === 'string') {
+    input.value = t
+  }
+})
+
+watch(sttError, (e) => {
+  if (e) {
+    showErrorToast(e)
+  }
+})
 
 async function sendMessage() {
 	const q = input.value.trim()
@@ -84,6 +101,18 @@ async function sendMessage() {
       <p v-if="errorMessage" class="text-sm text-red-600 mb-2">{{ errorMessage }}</p>
       <div class="flex items-center gap-2">
         <input class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" v-model="input" :disabled="isSending" placeholder="Ask a question..." @keydown.enter="sendMessage" />
+        <button
+          v-if="isSttSupported"
+          class="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          :class="isListening ? 'bg-blue-50 border-blue-200 text-blue-700' : ''"
+          :aria-pressed="isListening ? 'true' : 'false'"
+          :title="isListening ? 'Stop voice input' : 'Start voice input'"
+          :disabled="isSending"
+          @click="isListening ? stopStt() : startStt()"
+          aria-label="Voice input"
+        >
+          <IconMicrophone />
+        </button>
         <button class="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-50" :disabled="isSending" @click="sendMessage">{{ isSending ? 'Sending…' : 'Send' }}</button>
       </div>
     </div>
