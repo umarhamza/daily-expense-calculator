@@ -18,7 +18,21 @@ watch(() => props.expense, (e) => {
 	date.value = e.date ?? ''
 }, { immediate: true })
 
-const isValid = computed(() => !!item.value && !Number.isNaN(Number.parseFloat(cost.value)) && /^\d{4}-\d{2}-\d{2}$/.test(date.value))
+function normalizeCostString(input) {
+	const raw = String(input ?? '')
+	const replaced = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+	const parts = replaced.split('.')
+	if (parts.length > 2) {
+		return parts[0] + '.' + parts.slice(1).join('').replace(/\./g, '')
+	}
+	return replaced
+}
+
+function onCostInput(val) {
+	cost.value = normalizeCostString(val)
+}
+
+const isValid = computed(() => !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)) && /^\d{4}-\d{2}-\d{2}$/.test(date.value))
 
 function handleSave() {
 	const parsedCost = Number.parseFloat(cost.value)
@@ -54,6 +68,7 @@ function handleDelete() {
 					inputmode="decimal"
 					variant="outlined"
 					hide-details="auto"
+					@update:model-value="onCostInput"
 					class="mt-3"
 				/>
 				<v-text-field
