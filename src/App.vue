@@ -115,26 +115,28 @@ async function logout() { await supabase.auth.signOut() }
 </script>
 
 <template>
-  <div v-if="!session" class="min-h-screen">
-    <AuthForm />
-  </div>
-  <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
-    <button class="fixed top-3 right-3 text-sm text-gray-600 dark:text-gray-300" @click="logout">Logout</button>
-    <main class="mx-auto max-w-md px-4 pt-4">
-      <component :is="currentView === 'day' ? DayView : MonthView"
-        :date="selectedDate"
-        :monthDate="monthOfSelected"
-        :userId="userId"
-        :refreshKey="refreshKey"
-        @changeDate="d => (selectedDate = d)"
-      />
-    </main>
+  <v-app>
+    <div v-if="!session" class="min-h-screen">
+      <AuthForm />
+    </div>
+    <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
+      <button class="fixed top-3 right-3 text-sm text-gray-600 dark:text-gray-300" @click="logout">Logout</button>
+      <main class="mx-auto max-w-md px-4 pt-4">
+        <component :is="currentView === 'day' ? DayView : MonthView"
+          :date="selectedDate"
+          :monthDate="monthOfSelected"
+          :userId="userId"
+          :refreshKey="refreshKey"
+          @changeDate="d => (selectedDate = d)"
+        />
+      </main>
 
-    <BottomNav :current="currentView" @navigate="handleNavigate" />
+      <BottomNav :current="currentView" @navigate="handleNavigate" />
 
-    <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" @added="handleAddedFromChat" />
-  </div>
-  <Toasts />
+      <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" @added="handleAddedFromChat" />
+    </div>
+    <Toasts />
+  </v-app>
 </template>
 
 <style scoped>
