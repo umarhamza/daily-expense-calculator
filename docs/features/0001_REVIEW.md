@@ -36,3 +36,20 @@ Conclusion: Bootstrap work complete. Today tab UI conversion pending.
 - Convert `EditExpenseModal.vue` similarly with validation disabling Save button.
 - Ensure no other tabs or components are modified.
 - Build and run to verify visually and functionally that only Today tab changed.
+
+### 6) Verification checklist
+- Dependencies and config match plan:
+  - `package.json` contains Vuetify deps; `vite.config.js` uses `vite-plugin-vuetify` with `transformAssetUrls`.
+  - `src/plugins/vuetify.js` includes MDI icon set; `src/main.js` registers Vuetify.
+  - `src/App.vue` wraps app with `<v-app>`.
+- Runtime sanity checks:
+  - `npm run dev` launches without compile errors; no runtime console errors.
+  - Login/auth flow still renders; PWA registration remains active.
+  - Today tab UI unchanged for now (Tailwind), pending conversion.
+- Build sanity:
+  - `npm run build` succeeds without errors or warnings beyond expected Vuetify/Tailwind info.
+
+### 7) Risks / notes
+- Mixed Tailwind + Vuetify styles may look slightly inconsistent until Today tab and modals are converted.
+- Keep Vuetify usage scoped to Today tab for this MVP to avoid regressions elsewhere.
+- Watch for CSS reset interactions (Tailwind preflight vs Vuetify styles) when converting components; address locally in component scopes if needed.
