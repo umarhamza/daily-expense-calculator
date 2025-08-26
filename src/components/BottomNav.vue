@@ -5,29 +5,14 @@ function handleNav(target) { emit('navigate', target) }
 </script>
 
 <template>
-  <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-sm">
-    <ul class="flex justify-around py-2 text-sm">
-      <li>
-        <button
-          class="px-4 py-2 rounded-md"
-          :class="current === 'day' ? 'text-blue-600 font-semibold' : 'text-gray-600'"
-          @click="handleNav('day')"
-        >Day</button>
-      </li>
-      <li>
-        <button
-          class="px-4 py-2 rounded-md"
-          :class="current === 'month' ? 'text-blue-600 font-semibold' : 'text-gray-600'"
-          @click="handleNav('month')"
-        >Month</button>
-      </li>
-      <li>
-        <button
-          class="px-4 py-2 rounded-md"
-          :class="current === 'chat' ? 'text-blue-600 font-semibold' : 'text-gray-600'"
-          @click="handleNav('chat')"
-        >Chat</button>
-      </li>
-    </ul>
-  </nav>
+  <v-bottom-navigation
+    class="fixed bottom-0 left-0 right-0"
+    grow
+    mode="shift"
+    elevation="4"
+  >
+    <v-btn :color="props.current === 'day' ? 'primary' : undefined" prepend-icon="mdi-calendar-today" @click="handleNav('day')">Day</v-btn>
+    <v-btn :color="props.current === 'month' ? 'primary' : undefined" prepend-icon="mdi-calendar-month" @click="handleNav('month')">Month</v-btn>
+    <v-btn :color="props.current === 'chat' ? 'primary' : undefined" prepend-icon="mdi-chat" @click="handleNav('chat')">Chat</v-btn>
+  </v-bottom-navigation>
 </template>
