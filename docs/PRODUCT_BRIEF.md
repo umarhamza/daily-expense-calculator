@@ -13,7 +13,7 @@ A mobile‑first web app to quickly record daily expenses and visualize monthly 
 - Day view: list expenses and show daily total
 - Month view: grouped totals by item with simple summaries
 - Swipe navigation between Day and Month (mobile‑friendly)
-- Chat assistant for quick Q&A on spend patterns (OpenAI API)
+- Chat assistant for quick Q&A on spend patterns (Gemini API)
 - Supabase‑backed storage; auth and cross‑device sync planned
 - Offline‑first caching planned (local storage) for resiliency
 
