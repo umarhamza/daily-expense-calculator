@@ -101,67 +101,71 @@ function goToday() {
 </script>
 
 <template>
-  <div class="pb-16">
-    <header class="flex items-center justify-between mb-4">
-      <h1 class="text-xl font-semibold">{{ formattedDate }}</h1>
-      <button
-        class="text-sm text-blue-600"
-        v-if="date !== new Date().toISOString().slice(0, 10)"
-        @click="goToday"
-      >
-        Today
-      </button>
-    </header>
+  <div>
+    <v-row class="mb-4" align="center" justify="space-between">
+      <v-col cols="auto">
+        <h1 class="text-h6">{{ formattedDate }}</h1>
+      </v-col>
+      <v-col cols="auto">
+        <v-btn
+          v-if="date !== new Date().toISOString().slice(0, 10)"
+          variant="text"
+          density="comfortable"
+          @click="goToday"
+        >
+          Today
+        </v-btn>
+      </v-col>
+    </v-row>
 
-    <div class="space-y-2">
+    <div>
       <template v-if="isLoading">
-        <div
+        <v-skeleton-loader
           v-for="i in 5"
           :key="i"
-          class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3 animate-pulse"
-        >
-          <div class="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          <div class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
-        </div>
+          type="list-item"
+          class="mb-2"
+        />
       </template>
+
       <template v-else>
-        <div
-          v-for="(e, i) in expenses"
-          :key="e.id ?? i"
-          class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3"
-          @click="openEdit(e)"
-        >
-          <div class="font-medium">{{ e.item }}</div>
-          <div class="text-gray-700 dark:text-gray-200">
-            D{{ e.cost.toFixed(2) }}
-          </div>
-        </div>
-        <div
-          v-if="!expenses.length"
-          class="text-center text-gray-400 dark:text-gray-400 py-10"
-        >
+        <v-list v-if="expenses.length" lines="one" density="comfortable">
+          <template v-for="(e, i) in expenses" :key="e.id ?? i">
+            <v-list-item @click="openEdit(e)">
+              <v-list-item-title>{{ e.item }}</v-list-item-title>
+              <template #append>
+                <div class="font-weight-medium">D{{ e.cost.toFixed(2) }}</div>
+              </template>
+            </v-list-item>
+            <v-divider v-if="i < expenses.length - 1" />
+          </template>
+        </v-list>
+        <v-alert v-else type="info" variant="tonal" density="comfortable" class="text-center py-8">
           No expenses yet
-        </div>
+        </v-alert>
       </template>
     </div>
 
-    <div
-      class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200"
-    >
-      <div class="font-semibold">Total</div>
-      <div class="font-semibold" v-if="!isLoading">D{{ total.toFixed(2) }}</div>
-      <div
-        v-else
-        class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"
-      ></div>
-    </div>
+    <v-row class="mt-6" align="center" justify="space-between">
+      <v-col cols="auto">
+        <div class="font-weight-medium">Total</div>
+      </v-col>
+      <v-col cols="auto">
+        <div v-if="!isLoading" class="font-weight-medium">D{{ total.toFixed(2) }}</div>
+        <v-skeleton-loader v-else type="text" width="80" />
+      </v-col>
+    </v-row>
 
-    <button
-      class="fixed bottom-16 right-4 bg-blue-600 text-white rounded-full w-12 h-12 text-2xl shadow-lg"
+    <v-btn
+      color="primary"
+      variant="elevated"
+      :icon="true"
       @click="openModal"
+      :style="{ position: 'fixed', right: '16px', bottom: '64px', zIndex: 10 }"
+      aria-label="Add expense"
     >
-      +
-    </button>
+      <v-icon icon="mdi-plus" />
+    </v-btn>
 
     <AddExpenseModal
       :isOpen="isModalOpen"
