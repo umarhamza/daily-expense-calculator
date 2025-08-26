@@ -4,11 +4,15 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import { VitePWA } from 'vite-plugin-pwa'
+import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: { transformAssetUrls }
+    }),
+    vuetify({ autoImport: true }),
     vueDevTools(),
     VitePWA({
       registerType: 'autoUpdate',
