@@ -1,6 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { supabase } from '@/lib/supabase'
+import { showErrorToast } from '@/lib/toast'
+import { useSpeechToText } from '@/lib/useSpeechToText'
+import IconMicrophone from './icons/IconMicrophone.vue'
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -10,9 +13,26 @@ const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
 
+// Voice to text
+const { isSupported: isSttSupported, isListening, transcript, errorMessage: sttError, start: startStt, stop: stopStt } = useSpeechToText()
+
+watch(transcript, (t) => {
+  if (t && typeof t === 'string') {
+    input.value = t
+  }
+})
+
+watch(sttError, (e) => {
+  if (e) {
+    showErrorToast(e)
+  }
+})
+
 async function sendMessage() {
 	const q = input.value.trim()
 	if (!q || isSending.value) return
+	// stop STT if active before sending
+	try { if (isListening.value) stopStt() } catch (_) {}
 	messages.value.push({ role: 'user', content: q })
 	input.value = ''
 	errorMessage.value = ''
@@ -71,7 +91,7 @@ async function sendMessage() {
 		<v-card>
 			<v-card-title class="d-flex align-center justify-space-between">
 				<span class="text-h6">Chat</span>
-				<v-btn icon="mdi-close" variant="text" @click="$emit('close')" aria-label="Close" />
+				<v-btn icon="mdi-close" variant="text" @click="() => { try { if (isListening) stopStt() } catch (_) {}; $emit('close') }" aria-label="Close" />
 			</v-card-title>
 			<v-card-text class="pt-0">
 				<v-sheet class="pa-3 mb-3" rounded="md" border style="max-height: 260px; overflow-y: auto;">
@@ -80,6 +100,7 @@ async function sendMessage() {
 					</div>
 				</v-sheet>
 				<v-alert v-if="errorMessage" type="error" density="comfortable" class="mb-2">{{ errorMessage }}</v-alert>
+        <p v-if="sttError" class="text-xs text-red-600 mb-2">{{ sttError }}</p>
 				<div class="d-flex align-center" style="gap: 8px;">
 					<v-text-field
 						v-model="input"
@@ -90,6 +111,18 @@ async function sendMessage() {
 						hide-details
 						class="flex-1"
 					/>
+          <button
+            v-if="isSttSupported"
+            class="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :class="isListening ? 'bg-blue-50 border-blue-200 text-blue-700' : ''"
+            :aria-pressed="isListening ? 'true' : 'false'"
+            :title="isListening ? 'Stop voice input' : 'Start voice input'"
+            :disabled="isSending"
+            @click="isListening ? stopStt() : startStt()"
+            :aria-label="isListening ? 'Stop voice input' : 'Start voice input'"
+          >
+            <component :is="isListening ? IconStop : IconMicrophone" />
+          </button>
 					<v-btn color="primary" :loading="isSending" :disabled="isSending" @click="sendMessage">Send</v-btn>
 				</div>
 			</v-card-text>
