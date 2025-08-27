@@ -44,5 +44,6 @@ export const vuetify = createVuetify({
 		VBtn: { density: 'comfortable', rounded: 'md' },
 		VTextField: { density: 'comfortable', variant: 'outlined' },
 		VDialog: { transition: 'dialog-bottom-transition' },
+		VCard: { rounded: 'lg' },
 	},
 })
