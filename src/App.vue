@@ -6,10 +6,13 @@ import DayView from './components/DayView.vue'
 import MonthView from './components/MonthView.vue'
 import ChatModal from './components/ChatModal.vue'
 import AuthForm from './components/AuthForm.vue'
+import SettingsPage from './components/SettingsPage.vue'
+import { getProfile } from '@/lib/supabase'
+import { getDefaultCurrency } from '@/lib/currency'
 import { supabase } from '@/lib/supabase'
 import Toasts from './components/Toasts.vue'
 
-const currentView = ref('day') // 'day' | 'month'
+const currentView = ref('day') // 'day' | 'month' | 'settings'
 const isChatOpen = ref(false)
 
 function handleNavigate(target) {
@@ -23,6 +26,7 @@ const selectedDate = ref(todayIso)
 const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + '-01')
 
 const refreshKey = ref(0)
+const currency = ref(getDefaultCurrency())
 
 const container = ref(null)
 const { direction, isSwiping } = useSwipe(container, { threshold: 30 })
@@ -31,6 +35,12 @@ onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   session.value = data.session
   supabase.auth.onAuthStateChange((_, s) => { session.value = s })
+  if (session.value?.user?.id) {
+    try {
+      const { data: profile } = await getProfile(session.value.user.id)
+      if (profile?.currency && profile.currency.length === 3) currency.value = profile.currency
+    } catch (_) {}
+  }
 })
 
 /**
@@ -122,11 +132,9 @@ async function logout() { await supabase.auth.signOut() }
     <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
       <v-btn class="fixed top-2 right-2" size="small" variant="text" @click="logout">Logout</v-btn>
       <main class="mx-auto max-w-md px-3 pt-3">
-        <component :is="currentView === 'day' ? DayView : MonthView"
-          :date="selectedDate"
-          :monthDate="monthOfSelected"
-          :userId="userId"
-          :refreshKey="refreshKey"
+        <component :is="currentView === 'day' ? DayView : (currentView === 'month' ? MonthView : SettingsPage)"
+          v-bind="currentView === 'settings' ? { userId } : (currentView === 'day' ? { date: selectedDate, userId, refreshKey } : { monthDate: monthOfSelected, userId })"
+          :currency="currency"
           @changeDate="d => (selectedDate = d)"
         />
       </main>
