@@ -6,6 +6,7 @@ import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useSpeechToText } from '@/lib/useSpeechToText'
 import IconMicrophone from './icons/IconMicrophone.vue'
+import IconStop from './icons/IconStop.vue'
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
@@ -35,6 +36,8 @@ watch(sttError, (e) => {
 async function sendMessage() {
 	const q = input.value.trim()
 	if (!q || isSending.value) return
+	// stop STT if active before sending
+	try { if (isListening.value) stopStt() } catch (_) {}
 	messages.value.push({ role: 'user', content: q })
 	input.value = ''
 	errorMessage.value = ''
@@ -91,7 +94,7 @@ async function sendMessage() {
     <div class="w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-xl" :style="sheetStyle">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Chat</h2>
-        <button class="text-gray-500 hover:text-gray-700" @click="$emit('close')">✕</button>
+        <button class="text-gray-500 hover:text-gray-700" @click="() => { try { if (isListening) stopStt() } catch (_) {}; $emit('close') }">✕</button>
       </div>
       <div class="h-56 overflow-y-auto space-y-2 border border-gray-100 dark:border-gray-700 rounded-md p-3 mb-3">
         <div v-for="(m, i) in messages" :key="i" class="text-sm" :class="m.role === 'user' ? 'text-right' : 'text-left'">
@@ -99,6 +102,7 @@ async function sendMessage() {
         </div>
       </div>
       <p v-if="errorMessage" class="text-sm text-red-600 mb-2">{{ errorMessage }}</p>
+      <p v-if="sttError" class="text-xs text-red-600 mb-2">{{ sttError }}</p>
       <div class="flex items-center gap-2">
         <input class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" v-model="input" :disabled="isSending" placeholder="Ask a question..." @keydown.enter="sendMessage" />
         <button
@@ -109,9 +113,9 @@ async function sendMessage() {
           :title="isListening ? 'Stop voice input' : 'Start voice input'"
           :disabled="isSending"
           @click="isListening ? stopStt() : startStt()"
-          aria-label="Voice input"
+          :aria-label="isListening ? 'Stop voice input' : 'Start voice input'"
         >
-          <IconMicrophone />
+          <component :is="isListening ? IconStop : IconMicrophone" />
         </button>
         <button class="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-50" :disabled="isSending" @click="sendMessage">{{ isSending ? 'Sending…' : 'Send' }}</button>
       </div>

@@ -81,6 +81,7 @@ export function useSpeechToText() {
 
   function stop() {
     if (!recognition) return
+    if (!isListening.value) return
     try {
       recognition.stop()
     } catch (_) {
