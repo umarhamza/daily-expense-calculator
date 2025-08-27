@@ -2,7 +2,6 @@
 import { ref, watch } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
-import { useKeyboardBottomOffset } from '@/lib/useKeyboardBottomOffset'
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useSpeechToText } from '@/lib/useSpeechToText'
 import IconMicrophone from './icons/IconMicrophone.vue'
