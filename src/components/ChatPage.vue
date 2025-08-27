@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
 import { useSpeechToText } from '@/lib/useSpeechToText'
 import IconMicrophone from './icons/IconMicrophone.vue'
+import IconStop from './icons/IconStop.vue'
 
 const emit = defineEmits(['added'])
 
