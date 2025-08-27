@@ -6,6 +6,8 @@ const canInstall = ref(false)
 const deferredPrompt = ref(null)
 const isStandalone = ref(false)
 
+const emit = defineEmits(['installed'])
+
 function handleBeforeInstallPrompt(e) {
   e.preventDefault()
   deferredPrompt.value = e
@@ -16,6 +18,7 @@ function handleAppInstalled() {
   canInstall.value = false
   deferredPrompt.value = null
   addToast({ type: 'success', title: 'Installed', message: 'App installed successfully' })
+  emit('installed')
 }
 
 async function install() {
@@ -30,7 +33,7 @@ async function install() {
 onMounted(() => {
   const mq = window.matchMedia('(display-mode: standalone)')
   isStandalone.value = mq.matches
-  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt, { once: true })
   window.addEventListener('appinstalled', handleAppInstalled)
 })
 
