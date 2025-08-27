@@ -47,12 +47,17 @@ function handleSave() {
 				<v-btn icon="mdi-close" variant="text" @click="$emit('close')" aria-label="Close" />
 			</v-card-title>
 			<v-card-text class="pt-0">
-				<v-autocomplete
+				<v-combobox
 					v-model="item"
 					:items="suggestions"
 					label="Item"
 					variant="outlined"
 					hide-details="auto"
+					:auto-select-first="false"
+					:return-object="false"
+					:chips="false"
+					:multiple="false"
+					:menu-props="{ closeOnContentClick: true }"
 				/>
 				<v-text-field
 					v-model="cost"

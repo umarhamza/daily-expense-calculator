@@ -3,7 +3,7 @@ import { ref, computed, watchEffect, watch } from "vue";
 import AddExpenseModal from "./AddExpenseModal.vue";
 import { fetchExpensesByDate, insertExpense } from "@/lib/supabase";
 import { formatDay } from "@/lib/date";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, formatAmount } from "@/lib/currency";
 
 // Edit modal state
 import EditExpenseModal from "./EditExpenseModal.vue";
@@ -17,6 +17,7 @@ const props = defineProps({
   userId: { type: String, required: true },
   refreshKey: { type: Number, default: 0 },
   currency: { type: String, default: 'USD' },
+  currencySymbol: { type: String, default: '' },
 });
 const emit = defineEmits(["changeDate"]);
 
@@ -136,7 +137,7 @@ function goToday() {
             <v-list-item @click="openEdit(e)">
               <v-list-item-title>{{ e.item }}</v-list-item-title>
               <template #append>
-                <div class="font-weight-medium">{{ formatCurrency(e.cost, props.currency) }}</div>
+                <div class="font-weight-medium">{{ props.currencySymbol ? formatAmount(e.cost, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(e.cost, props.currency) }}</div>
               </template>
             </v-list-item>
             <v-divider v-if="i < expenses.length - 1" />
@@ -153,7 +154,7 @@ function goToday() {
         <div class="font-weight-medium">Total</div>
       </v-col>
       <v-col cols="auto">
-        <div v-if="!isLoading" class="font-weight-medium">{{ formatCurrency(total, props.currency) }}</div>
+        <div v-if="!isLoading" class="font-weight-medium">{{ props.currencySymbol ? formatAmount(total, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(total, props.currency) }}</div>
         <v-skeleton-loader v-else type="text" width="80" />
       </v-col>
     </v-row>
