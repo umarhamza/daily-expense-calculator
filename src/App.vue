@@ -4,7 +4,7 @@ import { useSwipe } from '@vueuse/core'
 import BottomNav from './components/BottomNav.vue'
 import DayView from './components/DayView.vue'
 import MonthView from './components/MonthView.vue'
-import ChatModal from './components/ChatModal.vue'
+import ChatPage from './components/ChatPage.vue'
 import AuthForm from './components/AuthForm.vue'
 import SettingsPage from './components/SettingsPage.vue'
 import { getProfile } from '@/lib/supabase'
@@ -12,11 +12,9 @@ import { getDefaultCurrency } from '@/lib/currency'
 import { supabase } from '@/lib/supabase'
 import Toasts from './components/Toasts.vue'
 
-const currentView = ref('day') // 'day' | 'month' | 'settings'
-const isChatOpen = ref(false)
+const currentView = ref('day') // 'day' | 'month' | 'chat' | 'settings'
 
 function handleNavigate(target) {
-  if (target === 'chat') { isChatOpen.value = true; return }
   currentView.value = target
 }
 
@@ -27,6 +25,7 @@ const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + '-01')
 
 const refreshKey = ref(0)
 const currency = ref(getDefaultCurrency())
+const currencySymbol = ref('')
 
 const container = ref(null)
 const { direction, isSwiping } = useSwipe(container, { threshold: 30 })
@@ -39,6 +38,7 @@ onMounted(async () => {
     try {
       const { data: profile } = await getProfile(session.value.user.id)
       if (profile?.currency && profile.currency.length === 3) currency.value = profile.currency
+      if (typeof profile?.currency_symbol === 'string') currencySymbol.value = profile.currency_symbol
     } catch (_) {}
   }
 })
@@ -132,16 +132,18 @@ async function logout() { await supabase.auth.signOut() }
     <div v-else ref="container" @touchend="handleSwipe" class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 pb-16">
       <v-btn class="fixed top-2 right-2" size="small" variant="text" @click="logout">Logout</v-btn>
       <main class="mx-auto max-w-md px-3 pt-3">
-        <component :is="currentView === 'day' ? DayView : (currentView === 'month' ? MonthView : SettingsPage)"
-          v-bind="currentView === 'settings' ? { userId } : (currentView === 'day' ? { date: selectedDate, userId, refreshKey } : { monthDate: monthOfSelected, userId })"
+        <component :is="currentView === 'day' ? DayView : (currentView === 'month' ? MonthView : (currentView === 'chat' ? ChatPage : SettingsPage))"
+          v-bind="currentView === 'settings' ? { userId } : (currentView === 'day' ? { date: selectedDate, userId, refreshKey } : (currentView === 'month' ? { monthDate: monthOfSelected, userId } : { }))"
           :currency="currency"
+          :currencySymbol="currencySymbol"
           @changeDate="d => (selectedDate = d)"
+          @added="handleAddedFromChat"
         />
       </main>
 
       <BottomNav :current="currentView" @navigate="handleNavigate" />
 
-      <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" @added="handleAddedFromChat" />
+      
     </div>
     <Toasts />
   </v-app>

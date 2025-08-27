@@ -15,6 +15,30 @@ function formatCurrency(amount, currencyCode) {
 }
 
 /**
+ * Format amount with optional symbol override.
+ * Inputs: amount (number), options: { code?: string, symbolOverride?: string }
+ * Returns: string like "$10.00" or "D10.00" when symbol override provided.
+ */
+function formatAmount(amount, options = {}) {
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  const code = typeof options.code === 'string' && options.code.length === 3 ? options.code : 'USD'
+  const symbol = typeof options.symbolOverride === 'string' && options.symbolOverride.trim().length >= 1 ? options.symbolOverride.trim() : null
+  if (!symbol) return formatCurrency(safeAmount, code)
+  // Use Intl for numeric part, then replace currencyDisplay with symbol prefix
+  try {
+    const formatted = new Intl.NumberFormat(undefined, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 }).format(safeAmount)
+    // Replace any leading currency sign/run with our symbol. Fallback to prefix symbol.
+    // Common outputs: "$10.00", "US$ 10.00", "10,00 €". We keep spacing minimal.
+    const replaced = formatted
+      .replace(/^\p{Sc}+\s?/u, '') // remove leading currency sign(s)
+      .replace(/^([A-Z]{2}\$)\s?/u, '') // remove things like US$
+    return symbol + replaced
+  } catch (_) {
+    return `${symbol}${safeAmount.toFixed(2)}`
+  }
+}
+
+/**
  * Returns default currency from localStorage or 'USD'.
  */
 function getDefaultCurrency() {
@@ -25,5 +49,5 @@ function getDefaultCurrency() {
   return 'USD'
 }
 
-export { formatCurrency, getDefaultCurrency }
+export { formatCurrency, formatAmount, getDefaultCurrency }
 

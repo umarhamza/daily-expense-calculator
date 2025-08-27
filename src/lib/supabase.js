@@ -95,7 +95,7 @@ export async function getProfile(userId) {
   if (!userId) return { data: null, error: new Error('Missing userId') }
   const { data, error } = await supabase
     .from('profiles')
-    .select('user_id,display_name,currency,created_at,updated_at')
+    .select('user_id,display_name,currency,currency_symbol,created_at,updated_at')
     .eq('user_id', userId)
     .maybeSingle()
   return { data, error }
@@ -112,14 +112,14 @@ export async function updateProfile(userId, partial) {
     .from('profiles')
     .update(partial)
     .eq('user_id', userId)
-    .select('user_id,display_name,currency,created_at,updated_at')
+    .select('user_id,display_name,currency,currency_symbol,created_at,updated_at')
     .maybeSingle()
   if (error) return { data: null, error }
   if (data) return { data, error: null }
   const { data: inserted, error: insertError } = await supabase
     .from('profiles')
     .insert({ user_id: userId, ...partial })
-    .select('user_id,display_name,currency,created_at,updated_at')
+    .select('user_id,display_name,currency,currency_symbol,created_at,updated_at')
     .single()
   return { data: inserted, error: insertError }
 }
