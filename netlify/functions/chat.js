@@ -146,7 +146,7 @@ async function queryExpensesByPlan(supabase, plan) {
 
 	let query = supabase
 		.from('expenses')
-		.select('item,cost,date')
+		.select('item,cost,quantity,date')
 		.eq('user_id', userId)
 		.order('date', { ascending: false })
 		.limit(500)
@@ -266,7 +266,7 @@ async function tryAddFromNaturalText(apiKey, supabase, text) {
 
 	const prompt = [
 		'Extract shopping items from the user message and return ONLY strict JSON. No prose, no code fences, no comments.',
-		'Match this schema exactly with lowercase item names and defaults: quantity defaults to 1; if price is missing, set unitPrice to 0 and total to 0; total should equal quantity * unitPrice when prices are present.',
+		'Match this schema exactly with lowercase item names and defaults: quantity defaults to 1; if price is missing, set unitPrice to 0 and total to 0; total should equal quantity * unitPrice when prices are present. Quantity is stored in a dedicated DB column, not embedded in the item name.',
 		'Schema:',
 		schema,
 		'',
@@ -311,7 +311,7 @@ async function tryAddFromNaturalText(apiKey, supabase, text) {
 		const unitPrice = Number.isFinite(unitPriceRaw) ? unitPriceRaw : 0
 		const totalRaw = Number.parseFloat(raw?.total)
 		const total = Number.isFinite(totalRaw) ? totalRaw : (quantity * unitPrice)
-		rows.push({ user_id: userId, item: `${name} x${quantity}`, cost: total || 0, date: isoDate })
+		rows.push({ user_id: userId, item: name, quantity, cost: total || 0, date: isoDate })
 	}
 
 	if (!rows.length) return { added: false, attempted: true }
@@ -319,14 +319,14 @@ async function tryAddFromNaturalText(apiKey, supabase, text) {
 	const { data: inserted, error } = await supabase
 		.from('expenses')
 		.insert(rows)
-		.select('id,item,cost,date,created_at')
+		.select('id,item,cost,quantity,date,created_at')
 	if (error) return { added: false, attempted: true }
 
 	// Build summary
-	const parts = rows.map(r => `${r.item} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
+	const parts = rows.map(r => `${r.item}${r.quantity && r.quantity > 1 ? ` ×${r.quantity}` : ''} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
 	const when = isoDate === toISO(new Date()) ? 'today' : isoDate
 	const summary = `Added: ${parts.join(', ')} for ${when}.`
-	return { added: true, summary, date: isoDate, items: rows.map(r => ({ item: r.item, cost: r.cost })), attempted: true }
+	return { added: true, summary, date: isoDate, items: rows.map(r => ({ item: r.item, quantity: r.quantity, cost: r.cost })), attempted: true }
 }
 
 /**
@@ -503,7 +503,7 @@ async function answerSpendQuestion(supabase, question) {
 
 	let query = supabase
 		.from('expenses')
-		.select('item,cost,date')
+		.select('item,cost,quantity,date')
 		.eq('user_id', userId)
 		.gte('date', from)
 		.lte('date', to)

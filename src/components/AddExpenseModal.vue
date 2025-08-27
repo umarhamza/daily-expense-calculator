@@ -9,6 +9,7 @@ const props = defineProps({
 
 const item = ref('')
 const cost = ref('')
+const quantity = ref(1)
 const suggestions = ['Bread', 'Milk', 'Coffee', 'Groceries', 'Taxi', 'Dinner', 'Snacks']
 
 function normalizeCostString(input) {
@@ -25,14 +26,19 @@ function onCostInput(val) {
 	cost.value = normalizeCostString(val)
 }
 
-const isValid = computed(() => !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)))
+const isValid = computed(() => {
+  const qn = Number.parseInt(quantity.value, 10)
+  return !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)) && Number.isFinite(qn) && qn > 0
+})
 
 function handleSave() {
 	const parsed = Number.parseFloat(cost.value)
-	if (!item.value || Number.isNaN(parsed)) return
-	emit('save', { item: item.value, cost: parsed, date: props.defaultDate })
+	const qn = Number.parseInt(quantity.value, 10)
+	if (!item.value || Number.isNaN(parsed) || !Number.isFinite(qn) || qn <= 0) return
+	emit('save', { item: item.value, cost: parsed, quantity: qn, date: props.defaultDate })
 	item.value = ''
 	cost.value = ''
+	quantity.value = 1
 }
 </script>
 
@@ -58,6 +64,16 @@ function handleSave() {
 					:chips="false"
 					:multiple="false"
 					:menu-props="{ closeOnContentClick: true }"
+				/>
+				<v-text-field
+					v-model.number="quantity"
+					label="Quantity"
+					type="number"
+					min="1"
+					step="1"
+					variant="outlined"
+					hide-details="auto"
+					class="mt-3"
 				/>
 				<v-text-field
 					v-model="cost"

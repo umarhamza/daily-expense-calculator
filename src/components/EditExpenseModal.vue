@@ -10,12 +10,14 @@ const props = defineProps({
 const item = ref('')
 const cost = ref('')
 const date = ref('')
+const quantity = ref(1)
 
 watch(() => props.expense, (e) => {
 	if (!e) return
 	item.value = e.item ?? ''
 	cost.value = Number.isFinite(e.cost) ? String(e.cost) : ''
 	date.value = e.date ?? ''
+	quantity.value = Number.isFinite(e.quantity) && e.quantity > 0 ? e.quantity : 1
 }, { immediate: true })
 
 function normalizeCostString(input) {
@@ -32,12 +34,13 @@ function onCostInput(val) {
 	cost.value = normalizeCostString(val)
 }
 
-const isValid = computed(() => !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)) && /^\d{4}-\d{2}-\d{2}$/.test(date.value))
+const isValid = computed(() => !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)) && /^\d{4}-\d{2}-\d{2}$/.test(date.value) && Number.isFinite(Number.parseInt(quantity.value, 10)) && Number.parseInt(quantity.value, 10) > 0)
 
 function handleSave() {
 	const parsedCost = Number.parseFloat(cost.value)
 	if (!isValid.value) return
-	emit('save', { id: props.expense.id, item: item.value, cost: parsedCost, date: date.value })
+	const qn = Number.parseInt(quantity.value, 10)
+	emit('save', { id: props.expense.id, item: item.value, cost: parsedCost, quantity: qn, date: date.value })
 }
 
 function handleDelete() {
@@ -61,6 +64,16 @@ function handleDelete() {
 					label="Item"
 					variant="outlined"
 					hide-details="auto"
+				/>
+				<v-text-field
+					v-model.number="quantity"
+					label="Quantity"
+					type="number"
+					min="1"
+					step="1"
+					variant="outlined"
+					hide-details="auto"
+					class="mt-3"
 				/>
 				<v-text-field
 					v-model="cost"
