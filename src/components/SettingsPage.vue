@@ -38,7 +38,7 @@ async function savePassword() {
   if (error) { showErrorToast(error.message); return }
   newPassword.value = ''
   confirmPassword.value = ''
-  addToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed' })
+  addToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed. You may need to re-login.' })
 }
 
 async function saveCurrency() {
