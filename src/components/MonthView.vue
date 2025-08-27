@@ -2,11 +2,13 @@
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
 import { formatMonth, formatDayShort } from "@/lib/date";
+import { formatCurrency } from "@/lib/currency";
 import { showErrorToast } from "@/lib/toast";
 
 const props = defineProps({
   monthDate: { type: String, required: true },
   userId: { type: String, required: true },
+  currency: { type: String, default: 'USD' },
 });
 
 const expenses = ref([]);
@@ -80,7 +82,7 @@ function isExpanded(base) {
         >
           <div class="font-medium">{{ g.base }} <span class="text-gray-500">({{ g.count }})</span></div>
           <div class="text-gray-700 dark:text-gray-200 flex items-center gap-2">
-            <span>D{{ g.sum.toFixed(2) }}</span>
+            <span>{{ formatCurrency(g.sum, props.currency) }}</span>
             <svg
               :class="isExpanded(g.base) ? 'rotate-180' : ''"
               class="w-4 h-4 text-gray-500 transition-transform"
@@ -104,7 +106,7 @@ function isExpanded(base) {
             >
               <div class="text-sm text-gray-800 dark:text-gray-200">{{ e.item }}</div>
               <div class="text-sm text-gray-500">{{ formatDayShort(e.date) }}</div>
-              <div class="text-sm text-gray-800 dark:text-gray-200">D{{ e.cost.toFixed(2) }}</div>
+              <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatCurrency(e.cost, props.currency) }}</div>
             </li>
           </ul>
         </div>
@@ -121,7 +123,7 @@ function isExpanded(base) {
       class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200"
     >
       <div class="font-semibold">Total</div>
-      <div class="font-semibold">D{{ grandTotal.toFixed(2) }}</div>
+      <div class="font-semibold">{{ formatCurrency(grandTotal, props.currency) }}</div>
     </div>
   </div>
 </template>

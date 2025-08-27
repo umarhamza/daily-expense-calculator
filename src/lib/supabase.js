@@ -81,6 +81,59 @@ export async function deleteExpense(userId, id) {
 }
 
 /**
+ * Fetch current auth user. Returns { data, error }.
+ */
+export async function getCurrentUser() {
+  const { data, error } = await supabase.auth.getUser()
+  return { data, error }
+}
+
+/**
+ * Fetch the profile row for a user. Returns { data, error } where data is the row or null.
+ */
+export async function getProfile(userId) {
+  if (!userId) return { data: null, error: new Error('Missing userId') }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id,display_name,currency,created_at,updated_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return { data, error }
+}
+
+/**
+ * Update profile for the user. Performs update; if missing, inserts a row. Returns { data, error }.
+ * Inputs: partial = { display_name?, currency? }
+ */
+export async function updateProfile(userId, partial) {
+  if (!userId) return { data: null, error: new Error('Missing userId') }
+  if (!partial || typeof partial !== 'object') return { data: null, error: new Error('Missing update payload') }
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(partial)
+    .eq('user_id', userId)
+    .select('user_id,display_name,currency,created_at,updated_at')
+    .maybeSingle()
+  if (error) return { data: null, error }
+  if (data) return { data, error: null }
+  const { data: inserted, error: insertError } = await supabase
+    .from('profiles')
+    .insert({ user_id: userId, ...partial })
+    .select('user_id,display_name,currency,created_at,updated_at')
+    .single()
+  return { data: inserted, error: insertError }
+}
+
+/**
+ * Update the current user's password. Returns { error }.
+ */
+export async function updateUserPassword(newPassword) {
+  if (!newPassword || String(newPassword).length < 6) return { error: new Error('Password must be at least 6 characters') }
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  return { error }
+}
+
+/**
  * Autocomplete items based on partial query using ILIKE on item.
  */
 export async function fetchAutocompleteItems(partial, userId) {
