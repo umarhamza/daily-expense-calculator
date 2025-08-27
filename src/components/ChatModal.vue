@@ -2,11 +2,8 @@
 import { ref, watch } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
-import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useSpeechToText } from '@/lib/useSpeechToText'
 import IconMicrophone from './icons/IconMicrophone.vue'
-import IconStop from './icons/IconStop.vue'
-
 
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
