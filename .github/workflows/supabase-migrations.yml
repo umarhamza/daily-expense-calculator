@@ -25,5 +25,5 @@ jobs:
 
       - name: Apply migrations to remote database (IPv4-safe)
         run: |
-          supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
+          supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}" --include-all
 
