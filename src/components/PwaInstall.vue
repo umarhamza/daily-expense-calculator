@@ -36,11 +36,12 @@ async function install() {
 
 onMounted(() => {
   const mq = window.matchMedia('(display-mode: standalone)')
-  isStandalone.value = mq.matches
+  isStandalone.value = mq.matches || window.navigator.standalone === true
 
   const ua = navigator.userAgent || ''
-  isMobile.value = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
-  isIOS.value = /iPad|iPhone|iPod/i.test(ua)
+  const isiPadOSDesktopUA = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  isMobile.value = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isiPadOSDesktopUA
+  isIOS.value = /iPad|iPhone|iPod/i.test(ua) || isiPadOSDesktopUA
 
   if (isMobile.value && !isStandalone.value) {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt, { once: true })
