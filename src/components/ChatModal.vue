@@ -88,7 +88,7 @@ async function sendMessage() {
 		:model-value="isOpen"
 		@update:model-value="val => { if (!val) $emit('close') }"
 	>
-		<v-card>
+		<v-card variant="flat">
 			<v-card-title class="d-flex align-center justify-space-between">
 				<span class="text-h6">Chat</span>
 				<v-btn icon="mdi-close" variant="text" @click="() => { try { if (isListening) stopStt() } catch (_) {}; $emit('close') }" aria-label="Close" />
