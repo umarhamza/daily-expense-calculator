@@ -15,6 +15,7 @@ const isSending = ref(false)
 const errorMessage = ref('')
 const pendingProposal = ref(null)
 const pendingAssistantIndex = ref(-1)
+const chatId = ref(null)
 
 // Voice to text
 const { isSupported: isSttSupported, isListening, transcript, errorMessage: sttError, start: startStt, stop: stopStt } = useSpeechToText()
@@ -44,6 +45,7 @@ function resetChat() {
   errorMessage.value = ''
   pendingProposal.value = null
   pendingAssistantIndex.value = -1
+  chatId.value = null
 }
 
 async function sendMessage() {
@@ -71,7 +73,7 @@ async function sendMessage() {
 				'content-type': 'application/json',
 				'authorization': `Bearer ${token}`,
 			},
-			body: JSON.stringify({ question: q, history: buildHistoryPayload() }),
+			body: JSON.stringify({ question: q, history: buildHistoryPayload(), chatId: chatId.value, title: chatId.value ? undefined : q.slice(0, 60) }),
 		})
 
 		const json = await res.json().catch(() => ({}))
@@ -99,6 +101,7 @@ async function sendMessage() {
 
 		// Otherwise, show the general answer
 		messages.value[pendingIndex] = { role: 'assistant', content: json.answer }
+		if (json.chatId && !chatId.value) chatId.value = json.chatId
 		return
 	} catch (err) {
 		messages.value[pendingIndex] = { role: 'assistant', content: 'Sorry, I had trouble answering that.' }

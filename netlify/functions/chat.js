@@ -21,32 +21,46 @@ export async function handler(event) {
 
 		// Context for smarter, context-aware chat
 		const dateIso = toISO(new Date())
-		const chatHistory = sanitizeHistory(body.history)
 		const confirm = body.confirm && typeof body.confirm === 'object' ? body.confirm : null
+		const requestedChatId = body.chatId ? String(body.chatId) : null
+		const requestedTitle = body.title ? String(body.title) : null
 
 		const { createClient } = await import('@supabase/supabase-js')
 		const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 			global: { headers: { Authorization: `Bearer ${token}` } },
 		})
 
+		// Resolve authenticated user and ensure chat
+		const { data: userData, error: userErr } = await supabase.auth.getUser()
+		if (userErr || !userData?.user?.id) return jsonRes(401, { error: 'Not authenticated' })
+		const userId = userData.user.id
+		const chatId = await ensureChat(supabase, userId, requestedChatId, requestedTitle || question.slice(0, 60))
+		if (!chatId) return jsonRes(500, { error: 'Could not create or access chat' })
+
+		// Persist user message
+		await insertChatMessage(supabase, userId, chatId, 'user', question)
+
+		// Load DB-backed history for prompt (last N)
+		const chatHistory = await fetchChatHistoryForPrompt(supabase, userId, chatId, 20)
+
 		// 0) Confirmation commit path (ADD | MODIFY | DELETE)
 		if (confirm && confirm.type) {
 			const t = String(confirm.type || '').toUpperCase()
 			// Verify proposal token before committing
 			const valid = await verifyProposalToken(supabase, confirm)
-			if (!valid) return jsonRes(200, { answer: 'Confirmation expired or invalid. Please try again.' })
+			if (!valid) return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: 'Confirmation expired or invalid. Please try again.', chatId })
 			if (t === 'ADD') {
 				const res = await commitAddProposal(supabase, confirm.payload)
-				if (!res.ok) return jsonRes(200, { answer: res.message || 'Sorry, I could not save that.' })
-				return jsonRes(200, { answer: res.answer, added: res.added })
+				if (!res.ok) return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: res.message || 'Sorry, I could not save that.', chatId })
+				return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: res.answer, added: res.added, chatId })
 			}
 			if (t === 'MODIFY') {
 				const res = await commitModifyProposal(supabase, confirm.payload)
-				return jsonRes(200, { answer: res.answer, updated: res.updated })
+				return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: res.answer, updated: res.updated, chatId })
 			}
 			if (t === 'DELETE') {
 				const res = await commitDeleteProposal(supabase, confirm.payload)
-				return jsonRes(200, { answer: res.answer, deleted: res.deleted })
+				return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: res.answer, deleted: res.deleted, chatId })
 			}
 		}
 
@@ -56,30 +70,30 @@ export async function handler(event) {
 		// 2) Route by intent
 		if (intent === 'ADD') {
 			const proposal = await buildAddProposalFromNaturalText(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
-			if (proposal.ok) return jsonRes(200, { answer: proposal.summary, confirmationRequired: true, proposal: { type: 'ADD', date: proposal.date, items: proposal.items, token: proposal.token } })
-			return jsonRes(200, { answer: 'I couldn\'t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.', attemptedAdd: true })
+			if (proposal.ok) return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: proposal.summary, confirmationRequired: true, proposal: { type: 'ADD', date: proposal.date, items: proposal.items, token: proposal.token }, chatId })
+			return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: 'I couldn\'t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.', attemptedAdd: true, chatId })
 		}
 
 		if (intent === 'MODIFY') {
 			const proposal = await buildModifyProposal(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
-			return jsonRes(200, proposal)
+			return await respondWithAssistantMessage(supabase, userId, chatId, 200, { ...proposal, chatId })
 		}
 
 		if (intent === 'DELETE') {
 			const proposal = await buildDeleteProposal(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
-			return jsonRes(200, proposal)
+			return await respondWithAssistantMessage(supabase, userId, chatId, 200, { ...proposal, chatId })
 		}
 
 		if (intent === 'QUERY') {
 			const qaAnswer = await answerSpendQuestion(supabase, question)
-			return jsonRes(200, { answer: qaAnswer })
+			return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: qaAnswer, chatId })
 		}
 
 		// CLARIFY or unknown → self-help and scope reminder
 		if (/how\s+do\s+i\s+use\s+this\??/i.test(question)) {
-			return jsonRes(200, { answer: 'I track expenses. Try “add bread 2 at 10”, “edit bread to 12”, “delete bread yesterday”, or ask “total this week vs last week”.' })
+			return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: 'I track expenses. Try “add bread 2 at 10”, “edit bread to 12”, “delete bread yesterday”, or ask “total this week vs last week”.', chatId })
 		}
-		return jsonRes(200, { answer: 'I can add, modify, delete expenses, or show totals. What would you like?' })
+		return await respondWithAssistantMessage(supabase, userId, chatId, 200, { answer: 'I can add, modify, delete expenses, or show totals. What would you like?', chatId })
 	} catch (err) {
 		return jsonRes(500, { error: err?.message || 'Unexpected error' })
 	}
@@ -91,6 +105,69 @@ function jsonRes(statusCode, obj) {
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(obj),
 	}
+}
+
+// --- Chat persistence helpers ---
+
+async function ensureChat(supabase, userId, maybeChatId, title) {
+  try {
+    if (maybeChatId) {
+      const { data } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('id', maybeChatId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (data && data.id) return data.id
+    }
+    const ttl = String(title || '').slice(0, 80) || null
+    const { data: inserted } = await supabase
+      .from('chats')
+      .insert({ user_id: userId, title: ttl })
+      .select('id')
+      .single()
+    return inserted?.id || null
+  } catch {
+    return null
+  }
+}
+
+async function insertChatMessage(supabase, userId, chatId, role, content) {
+  try {
+    const c = String(content || '').slice(0, 8000)
+    await supabase
+      .from('chat_messages')
+      .insert({ user_id: userId, chat_id: chatId, role, content: c })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function fetchChatHistoryForPrompt(supabase, userId, chatId, limit) {
+  try {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('role,content')
+      .eq('user_id', userId)
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: true })
+      .limit(limit || 20)
+    const cleaned = (data || [])
+      .map(x => ({ role: String(x.role || '').toLowerCase(), content: String(x.content || '').trim() }))
+      .filter(x => (x.role === 'user' || x.role === 'assistant') && x.content)
+    return cleaned.slice(-1 * (limit || 20))
+  } catch {
+    return []
+  }
+}
+
+async function respondWithAssistantMessage(supabase, userId, chatId, statusCode, payload) {
+  if (payload && payload.answer) {
+    try { await insertChatMessage(supabase, userId, chatId, 'assistant', payload.answer) } catch {}
+  }
+  const body = { ...(payload || {}), chatId }
+  return jsonRes(statusCode, body)
 }
 
 /**
