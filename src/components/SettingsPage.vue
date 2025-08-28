@@ -155,7 +155,7 @@ onMounted(loadProfile);
 
         <v-divider class="my-4" />
 
-        <div class="mb-2">
+        <div class="mb-2" v-if="/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)">
           <div class="font-weight-medium mb-2">PWA</div>
           <PwaInstall />
         </div>
