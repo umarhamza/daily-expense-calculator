@@ -6,8 +6,8 @@
 export function formatDay(isoDate) {
   const date = new Date(isoDate)
   return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'long',
+    weekday: 'short',
+    month: 'short',
     day: 'numeric',
     year: 'numeric'
   }).format(date)
@@ -21,7 +21,7 @@ export function formatDay(isoDate) {
 export function formatMonth(isoMonthStart) {
   const date = new Date(isoMonthStart)
   return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
+    month: 'short',
     year: 'numeric'
   }).format(date)
 }
@@ -48,5 +48,47 @@ function getOrdinalSuffix(day) {
   if (last === 2) return 'nd'
   if (last === 3) return 'rd'
   return 'th'
+}
+
+/**
+ * Return previous day ISO (YYYY-MM-DD) using UTC-safe arithmetic.
+ * Input: isoDate (YYYY-MM-DD). Returns: previous day ISO string.
+ */
+export function getPrevDayIso(isoDate) {
+  const date = new Date(isoDate)
+  date.setUTCDate(date.getUTCDate() - 1)
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * Return next day ISO clamped to today (UTC), as YYYY-MM-DD.
+ * Input: isoDate (YYYY-MM-DD). Returns: clamped next day ISO string.
+ */
+export function getNextDayIsoClampedToToday(isoDate) {
+  const date = new Date(isoDate)
+  date.setUTCDate(date.getUTCDate() + 1)
+  const next = date.toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  return next > today ? today : next
+}
+
+/**
+ * Return previous month start ISO (YYYY-MM-01) using UTC-safe arithmetic.
+ */
+export function getPrevMonthStartIso(isoMonthStart) {
+  const d = new Date(isoMonthStart)
+  const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1))
+  return prev.toISOString().slice(0, 10)
+}
+
+/**
+ * Return next month start ISO (YYYY-MM-01), clamped to the current month start.
+ */
+export function getNextMonthStartIsoClampedToCurrent(isoMonthStart) {
+  const d = new Date(isoMonthStart)
+  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
+  const nextIso = next.toISOString().slice(0, 10)
+  const currentMonthStart = new Date().toISOString().slice(0, 7) + '-01'
+  return nextIso > currentMonthStart ? currentMonthStart : nextIso
 }
 

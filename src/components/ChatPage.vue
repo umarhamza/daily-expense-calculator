@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { showErrorToast } from '@/lib/toast'
 import { useSpeechToText } from '@/lib/useSpeechToText'
@@ -12,6 +12,8 @@ const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }
 const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
+
+const messagesContainer = ref(null)
 
 // Voice to text
 const { isSupported: isSttSupported, isListening, transcript, errorMessage: sttError, start: startStt, stop: stopStt } = useSpeechToText()
@@ -81,16 +83,25 @@ async function sendMessage() {
     isSending.value = false
   }
 }
+
+// Auto-scroll to bottom when new messages arrive
+watch(() => messages.value.length, async () => {
+  await nextTick()
+  try {
+    const el = messagesContainer.value?.$el ?? messagesContainer.value
+    if (el) el.scrollTop = el.scrollHeight
+  } catch (_) {}
+})
 </script>
 
 <template>
-  <div>
+  <div class="d-flex flex-column">
     <header class="d-flex align-center justify-space-between mb-2">
       <h1 class="text-h6">Chat</h1>
     </header>
-    <v-card variant="flat">
-      <v-card-text class="pt-3 d-flex flex-column" style="gap: 8px;">
-        <v-sheet class="pa-3" rounded="md" border style="max-height: 60vh; overflow-y: auto;">
+    <v-card variant="flat" class="d-flex flex-column" style="min-height: calc(100vh - 140px);">
+      <v-card-text class="pt-3 d-flex flex-column flex-1" style="gap: 8px; min-height: 0;">
+        <v-sheet ref="messagesContainer" class="pa-3 flex-grow-1" rounded="md" border style="min-height: 0; overflow-y: auto;">
           <div v-for="(m, i) in messages" :key="i" class="text-body-2" :class="m.role === 'user' ? 'text-right' : 'text-left'">
             <span class="d-inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-grey-lighten-3 text-grey-darken-4'">{{ m.content }}</span>
           </div>

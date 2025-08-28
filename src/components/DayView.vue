@@ -2,7 +2,7 @@
 import { ref, computed, watchEffect, watch } from "vue";
 import AddExpenseModal from "./AddExpenseModal.vue";
 import { fetchExpensesByDate, insertExpense } from "@/lib/supabase";
-import { formatDay } from "@/lib/date";
+import { formatDay, getPrevDayIso, getNextDayIsoClampedToToday } from "@/lib/date";
 import { formatAmount } from "@/lib/currency";
 
 // Edit modal state
@@ -101,6 +101,18 @@ const total = computed(() =>
   expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
 );
 const formattedDate = computed(() => formatDay(props.date));
+
+const isAtToday = computed(() => {
+  const today = new Date().toISOString().slice(0, 10);
+  return props.date >= today;
+});
+
+function prevDay() {
+  emit("changeDate", getPrevDayIso(props.date));
+}
+function nextDay() {
+  emit("changeDate", getNextDayIsoClampedToToday(props.date));
+}
 function goToday() {
   const today = new Date();
   const iso = today.toISOString().slice(0, 10);
@@ -110,21 +122,29 @@ function goToday() {
 
 <template>
   <div>
-    <v-row class="mb-4" align="center" justify="space-between">
-      <v-col cols="auto">
-        <h1 class="text-h6">{{ formattedDate }}</h1>
-      </v-col>
+    <v-row class="mb-2" align="center" justify="end">
       <v-col cols="auto">
         <v-btn
           v-if="date !== new Date().toISOString().slice(0, 10)"
           variant="text"
           density="comfortable"
           @click="goToday"
+          title="Jump to today"
         >
           Today
         </v-btn>
       </v-col>
     </v-row>
+
+    <div class="mb-4 flex items-center justify-center gap-3">
+      <v-btn icon variant="text" density="comfortable" @click="prevDay" aria-label="Previous day" title="Previous day">
+        <v-icon icon="mdi-chevron-left" />
+      </v-btn>
+      <h1 class="text-h6 text-center">{{ formattedDate }}</h1>
+      <v-btn icon variant="text" density="comfortable" @click="nextDay" :disabled="isAtToday" aria-label="Next day" title="Next day">
+        <v-icon icon="mdi-chevron-right" />
+      </v-btn>
+    </div>
 
     <div>
       <template v-if="isLoading">

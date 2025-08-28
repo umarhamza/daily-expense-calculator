@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
-import { formatMonth, formatDayShort } from "@/lib/date";
+import { formatMonth, formatDayShort, getPrevMonthStartIso, getNextMonthStartIsoClampedToCurrent } from "@/lib/date";
 import { formatAmount } from "@/lib/currency";
 import { showErrorToast } from "@/lib/toast";
 
@@ -12,6 +12,7 @@ const props = defineProps({
 });
 
 const expenses = ref([]);
+const emit = defineEmits(["changeDate"]);
 
 watchEffect(async () => {
   if (!props.userId || !props.monthDate) {
@@ -61,6 +62,19 @@ const grandTotal = computed(() =>
   expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
 );
 const formattedMonth = computed(() => formatMonth(props.monthDate));
+const currentMonthStart = computed(() => new Date().toISOString().slice(0,7) + '-01');
+const isAtCurrentMonth = computed(() => props.monthDate >= currentMonthStart.value);
+
+function goPrevMonth() {
+  emit('changeDate', getPrevMonthStartIso(props.monthDate));
+}
+function goNextMonth() {
+  const next = getNextMonthStartIsoClampedToCurrent(props.monthDate);
+  emit('changeDate', next);
+}
+function goCurrentMonth() {
+  emit('changeDate', currentMonthStart.value);
+}
 
 // Track expanded states by base name; allow multiple open
 const expanded = ref(new Set());
@@ -77,14 +91,23 @@ function isExpanded(base) {
 
 <template>
   <div class="pb-16">
-    <header class="flex items-center justify-between mb-4">
-      <h1 class="text-xl font-semibold">{{ formattedMonth }}</h1>
+    <div class="mb-2 flex items-center justify-end">
+      <v-btn variant="text" density="comfortable" @click="goCurrentMonth" title="Jump to current month">Current Month</v-btn>
+    </div>
+    <header class="flex items-center justify-center gap-3 mb-4">
+      <v-btn icon variant="text" density="comfortable" @click="goPrevMonth" aria-label="Previous month" title="Previous month">
+        <v-icon icon="mdi-chevron-left" />
+      </v-btn>
+      <h1 class="text-xl font-semibold text-center">{{ formattedMonth }}</h1>
+      <v-btn icon variant="text" density="comfortable" @click="goNextMonth" :disabled="isAtCurrentMonth" aria-label="Next month" title="Next month">
+        <v-icon icon="mdi-chevron-right" />
+      </v-btn>
     </header>
 
     <div class="space-y-2">
       <template v-for="g in groups" :key="g.base">
         <div
-          class="flex items-center justify-between bg-white border border-gray-100 rounded-lg p-3 cursor-pointer select-none"
+          class="flex items-center justify-between bg-white border border-gray-100 rounded-lg p-4 cursor-pointer select-none"
           @click="toggleExpanded(g.base)"
         >
           <div class="font-medium">
@@ -119,7 +142,7 @@ function isExpanded(base) {
             <li
               v-for="e in g.items"
               :key="e.id"
-              class="flex items-center justify-between px-3 py-2"
+              class="flex items-center justify-between px-4 py-3"
             >
               <div class="text-sm text-gray-500">
                 {{ formatDayShort(e.date) }}
