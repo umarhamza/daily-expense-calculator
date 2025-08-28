@@ -1,7 +1,8 @@
 <script setup>
 import { ref } from "vue";
 import { supabase } from "@/lib/supabase";
-import { showErrorToast } from "@/lib/toast";
+
+const emit = defineEmits(["forgot"]);
 
 const email = ref("");
 const password = ref("");
@@ -9,10 +10,47 @@ const mode = ref("signin");
 const isLoading = ref(false);
 const errorMessage = ref("");
 const infoMessage = ref("");
+const showPassword = ref(false);
+
+const emailRef = ref(null);
+const passwordRef = ref(null);
+
+function validateInputs() {
+  errorMessage.value = "";
+
+  const trimmedEmail = String(email.value || "").trim();
+  const hasEmail = trimmedEmail.length > 0;
+  const emailLooksValid = /\S+@\S+\.\S+/.test(trimmedEmail);
+  const hasPassword = String(password.value || "").length > 0;
+  const passwordLongEnough = String(password.value || "").length >= 8;
+
+  if (!hasEmail) {
+    errorMessage.value = "Email is required";
+    emailRef.value?.focus?.();
+    return false;
+  }
+  if (!emailLooksValid) {
+    errorMessage.value = "Enter a valid email";
+    emailRef.value?.focus?.();
+    return false;
+  }
+  if (!hasPassword) {
+    errorMessage.value = "Password is required";
+    passwordRef.value?.focus?.();
+    return false;
+  }
+  if (mode.value === "signup" && !passwordLongEnough) {
+    errorMessage.value = "Password must be at least 8 characters";
+    passwordRef.value?.focus?.();
+    return false;
+  }
+  return true;
+}
 
 async function handleSubmit() {
   errorMessage.value = "";
   infoMessage.value = "";
+  if (!validateInputs()) return;
   isLoading.value = true;
   try {
     if (mode.value === "signup") {
@@ -22,7 +60,7 @@ async function handleSubmit() {
       });
       if (error) {
         errorMessage.value = error.message;
-        showErrorToast(error.message);
+        passwordRef.value?.focus?.();
         return;
       }
       infoMessage.value = "Check your email to confirm your account.";
@@ -33,7 +71,7 @@ async function handleSubmit() {
       });
       if (error) {
         errorMessage.value = error.message;
-        showErrorToast(error.message);
+        passwordRef.value?.focus?.();
         return;
       }
     }
@@ -44,64 +82,95 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen grid place-items-center">
-    <form
-      class="w-full max-w-sm bg-white p-6 rounded-lg shadow"
-      @submit.prevent="handleSubmit"
-    >
-      <h1 class="text-xl font-semibold mb-4">
+  <form class="w-full max-w-sm" @submit.prevent="handleSubmit">
+    <v-card>
+      <v-card-title class="text-h6">
         {{ mode === "signin" ? "Sign In" : "Sign Up" }}
-      </h1>
-
-      <div class="space-y-3">
-        <input
-          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          type="email"
-          placeholder="Email"
-          v-model="email"
-          required
-        />
-        <input
-          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          type="password"
-          placeholder="Password"
-          v-model="password"
-          required
-        />
-      </div>
-
-      <div v-if="errorMessage" class="mt-3 text-sm text-red-600">
-        {{ errorMessage }}
-      </div>
-      <div v-if="infoMessage" class="mt-3 text-sm text-green-600">
-        {{ infoMessage }}
-      </div>
-
-      <button
-        class="w-full bg-blue-600 text-white font-medium py-2 rounded-md mt-4 disabled:opacity-50"
-        :disabled="isLoading"
-        type="submit"
-      >
-        {{
-          isLoading
-            ? "Please wait..."
-            : mode === "signin"
-            ? "Sign In"
-            : "Create Account"
-        }}
-      </button>
-
-      <button
-        type="button"
-        class="w-full text-sm text-blue-600 mt-3"
-        @click="mode = mode === 'signin' ? 'signup' : 'signin'"
-      >
-        {{
-          mode === "signin"
-            ? "Need an account? Sign up"
-            : "Have an account? Sign in"
-        }}
-      </button>
-    </form>
-  </div>
+      </v-card-title>
+      <v-card-subtitle>
+        {{ mode === "signin" ? "Welcome back" : "Create your account" }}
+      </v-card-subtitle>
+      <v-card-text>
+        <div class="space-y-3">
+          <v-text-field
+            ref="emailRef"
+            v-model="email"
+            label="Email"
+            type="email"
+            autocomplete="email"
+            prepend-inner-icon="mdi-email"
+            autofocus
+            :rules="[
+              (v) => !!v || 'Email is required',
+              (v) => /\\S+@\\S+\\.\\S+/.test(String(v || '').trim()) || 'Enter a valid email',
+            ]"
+            required
+          />
+          <v-text-field
+            ref="passwordRef"
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            label="Password"
+            :autocomplete="mode === 'signin' ? 'current-password' : 'new-password'"
+            :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+            @click:append-inner="showPassword = !showPassword"
+            :rules="[
+              (v) => !!v || 'Password is required',
+              (v) => (mode === 'signup' ? String(v || '').length >= 8 : true) || 'At least 8 characters',
+            ]"
+            required
+          />
+          <v-alert
+            v-if="errorMessage"
+            type="error"
+            variant="tonal"
+            density="comfortable"
+            aria-live="polite"
+          >
+            {{ errorMessage }}
+          </v-alert>
+          <v-alert
+            v-if="infoMessage"
+            type="info"
+            variant="tonal"
+            density="comfortable"
+            aria-live="polite"
+          >
+            {{ infoMessage }}
+          </v-alert>
+        </div>
+      </v-card-text>
+      <v-card-actions class="flex flex-col gap-2">
+        <v-btn
+          color="primary"
+          type="submit"
+          :loading="isLoading"
+          :disabled="isLoading"
+          block
+        >
+          {{ mode === "signin" ? "Sign In" : "Create Account" }}
+        </v-btn>
+        <v-btn
+          variant="text"
+          type="button"
+          @click="mode = mode === 'signin' ? 'signup' : 'signin'"
+          block
+        >
+          {{
+            mode === "signin"
+              ? "Need an account? Sign up"
+              : "Have an account? Sign in"
+          }}
+        </v-btn>
+        <v-btn
+          variant="text"
+          size="small"
+          type="button"
+          @click="emit('forgot')"
+        >
+          Forgot password?
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </form>
 </template>
