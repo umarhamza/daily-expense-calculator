@@ -19,23 +19,52 @@ export async function handler(event) {
 		const question = String(body.question || '').trim()
 		if (!question) return jsonRes(400, { error: 'Question is required' })
 
+		// Context for smarter, context-aware chat
+		const dateIso = toISO(new Date())
+		const chatHistory = sanitizeHistory(body.history)
+		const confirm = body.confirm && typeof body.confirm === 'object' ? body.confirm : null
+
 		const { createClient } = await import('@supabase/supabase-js')
 		const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 			global: { headers: { Authorization: `Bearer ${token}` } },
 		})
 
-		// 1) Intent detection with Gemini (ADD | QUERY | CLARIFY)
-		const intent = await detectIntent(apiKey, question)
+		// 0) Confirmation commit path (ADD | MODIFY | DELETE)
+		if (confirm && confirm.type) {
+			const t = String(confirm.type || '').toUpperCase()
+			if (t === 'ADD') {
+				const res = await commitAddProposal(supabase, confirm.payload)
+				if (!res.ok) return jsonRes(200, { answer: res.message || 'Sorry, I could not save that.' })
+				return jsonRes(200, { answer: res.answer, added: res.added })
+			}
+			if (t === 'MODIFY') {
+				const res = await commitModifyProposal(supabase, confirm.payload)
+				return jsonRes(200, { answer: res.answer, updated: res.updated })
+			}
+			if (t === 'DELETE') {
+				const res = await commitDeleteProposal(supabase, confirm.payload)
+				return jsonRes(200, { answer: res.answer, deleted: res.deleted })
+			}
+		}
+
+		// 1) Intent detection with history and date (ADD | MODIFY | DELETE | QUERY | CONFIRM | CLARIFY)
+		const intent = await detectIntentWithContext(apiKey, { dateIso, history: chatHistory, latest: question })
 
 		// 2) Route by intent
 		if (intent === 'ADD') {
-			// Parse and insert items from the same message
-			const addedResult = await tryAddFromNaturalText(apiKey, supabase, question)
-			if (addedResult.added) {
-				return jsonRes(200, { answer: addedResult.summary, added: { date: addedResult.date, items: addedResult.items } })
-			}
-			// Provide guidance and flag attempt for UI
+			const proposal = await buildAddProposalFromNaturalText(apiKey, { dateIso, history: chatHistory, latest: question })
+			if (proposal.ok) return jsonRes(200, { answer: proposal.summary, confirmationRequired: true, proposal: { type: 'ADD', date: proposal.date, items: proposal.items } })
 			return jsonRes(200, { answer: 'I couldn\'t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.', attemptedAdd: true })
+		}
+
+		if (intent === 'MODIFY') {
+			const proposal = await buildModifyProposal(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
+			return jsonRes(200, proposal)
+		}
+
+		if (intent === 'DELETE') {
+			const proposal = await buildDeleteProposal(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
+			return jsonRes(200, proposal)
 		}
 
 		if (intent === 'QUERY') {
@@ -43,8 +72,11 @@ export async function handler(event) {
 			return jsonRes(200, { answer: qaAnswer })
 		}
 
-		// CLARIFY or unknown → ask user
-		return jsonRes(200, { answer: 'Do you want to add items or see your total?' })
+		// CLARIFY or unknown → self-help and scope reminder
+		if (/how\s+do\s+i\s+use\s+this\??/i.test(question)) {
+			return jsonRes(200, { answer: 'I track expenses. Try “add bread 2 at 10”, “edit bread to 12”, “delete bread yesterday”, or ask “total this week vs last week”.' })
+		}
+		return jsonRes(200, { answer: 'I can add, modify, delete expenses, or show totals. What would you like?' })
 	} catch (err) {
 		return jsonRes(500, { error: err?.message || 'Unexpected error' })
 	}
@@ -499,6 +531,35 @@ async function answerSpendQuestion(supabase, question) {
 	if (userErr || !userData?.user?.id) return 'Sorry, I could not verify your account.'
 	const userId = userData.user.id
 
+	// Quick comparison support: this week vs last week
+	if (/this\s+week\s+vs\s+last\s+week|last\s+week\s+vs\s+this\s+week/i.test(question)) {
+		const totalForRange = async (from, to, itemFilter) => {
+			let q = supabase
+				.from('expenses')
+				.select('item,cost,quantity,date')
+				.eq('user_id', userId)
+				.gte('date', from)
+				.lte('date', to)
+			if (itemFilter) q = q.ilike('item', `${itemFilter}%`)
+			const { data } = await q
+			return (data || []).reduce((sum, row) => sum + (Number.isFinite(Number(row.cost)) ? Number(row.cost) : 0), 0)
+		}
+		const today = toISO(new Date())
+		const now = new Date(Date.parse(today))
+		const day = now.getUTCDay() || 7
+		const monday = new Date(now.getTime() - (day - 1) * 24 * 60 * 60 * 1000)
+		const thisFrom = toISO(monday)
+		const thisTo = today
+		const lastFrom = toISO(new Date(monday.getTime() - 7 * 24 * 60 * 60 * 1000))
+		const lastTo = toISO(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000))
+		const tThis = await totalForRange(thisFrom, thisTo)
+		const tLast = await totalForRange(lastFrom, lastTo)
+		const diff = tThis - tLast
+		const abs = Math.abs(diff)
+		const sign = diff > 0 ? '+' : (diff < 0 ? '-' : '')
+		return `${formatDalasi(tThis)} this week vs ${formatDalasi(tLast)} last week (${sign}${formatDalasi(abs).slice(1)}).`
+	}
+
 	const { from, to, label, item } = parseSpendQuery(question)
 
 	let query = supabase
@@ -529,4 +590,245 @@ async function answerSpendQuestion(supabase, question) {
 	const amount = formatDalasi(total)
 	const suffix = baseFilter ? ` on ${baseFilter} ${label}.` : ` ${label}.`
 	return `${amount}${suffix}`
+}
+
+// ---- Context-aware helpers and proposal/confirmation flows ----
+
+function sanitizeHistory(input) {
+	const arr = Array.isArray(input) ? input : []
+	const cleaned = arr
+		.map(x => ({ role: String(x?.role || '').toLowerCase(), content: String(x?.content || '').trim() }))
+		.filter(x => (x.role === 'user' || x.role === 'assistant') && x.content)
+	return cleaned.slice(-20)
+}
+
+function buildSystemInstructions() {
+	return [
+		'You are the Expense Tracker Assistant for a Daily Expense Tracker web app.',
+		'Only answer questions related to tracking expenses. If unrelated, briefly say you only handle expenses.',
+		'Be concise and user-friendly. Do not invent data; use only provided chat history, current date, and backend context.',
+		'When adding, modifying, or deleting, ask for user confirmation before saving.',
+		'If asked "how do I use this?", explain briefly how to add, modify, delete, and query expenses.',
+	].join('\n')
+}
+
+function buildPrompt({ title, dateIso, history, latest, body }) {
+	const hist = (history || []).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
+	return [
+		buildSystemInstructions(),
+		'',
+		`Current date (UTC): ${dateIso}`,
+		'',
+		title ? `Task: ${title}` : '',
+		hist ? 'Chat history:\n' + hist : 'Chat history: (empty)',
+		'',
+		body || '',
+		'',
+		'Latest user message:',
+		String(latest || ''),
+	].filter(Boolean).join('\n')
+}
+
+async function detectIntentWithContext(apiKey, ctx) {
+	const prompt = buildPrompt({
+		title: 'Intent classification',
+		dateIso: ctx.dateIso,
+		history: ctx.history,
+		latest: ctx.latest,
+		body: [
+			'Return ONLY valid JSON. No prose. No code fences. No trailing commas.',
+			'Output schema: {"intent":"ADD"|"MODIFY"|"DELETE"|"QUERY"|"CONFIRM"|"CLARIFY"}',
+			'Classify the latest user message using the conversation history if needed.',
+			'Respond with ONLY the JSON object.'
+		].join('\n')
+	})
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 64 })
+	if (!res.ok) return 'CLARIFY'
+	try {
+		const parsed = JSON.parse((res.text || '').trim())
+		const value = String(parsed?.intent || '').toUpperCase()
+		if (value === 'ADD' || value === 'MODIFY' || value === 'DELETE' || value === 'QUERY' || value === 'CONFIRM' || value === 'CLARIFY') return value
+		return 'CLARIFY'
+	} catch {
+		return 'CLARIFY'
+	}
+}
+
+async function buildAddProposalFromNaturalText(apiKey, ctx) {
+	const schema = [
+		'{',
+		'  "items": [',
+		'    { "name": string, "quantity": number, "unitPrice": number optional, "total": number optional }',
+		'  ],',
+		'  "date": string // "today" | "yesterday" | "YYYY-MM-DD"',
+		'}',
+	].join('\n')
+	const body = [
+		'Extract shopping items from the user message and return ONLY strict JSON. No prose, no code fences, no comments.',
+		'Match this schema exactly with lowercase item names and defaults: quantity defaults to 1; if price is missing, set unitPrice to 0 and total to 0; total should equal quantity * unitPrice when prices are present. Quantity is stored in a dedicated DB column, not embedded in the item name.',
+		'Schema:',
+		schema,
+		'Respond with ONLY the JSON object.',
+	].join('\n')
+	const prompt = buildPrompt({ title: 'Add proposal extraction', dateIso: ctx.dateIso, history: ctx.history, latest: ctx.latest, body })
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 256 })
+	if (!res.ok) return { ok: false }
+	let parsed
+	try { parsed = JSON.parse((res.text || '').trim()) } catch { return { ok: false } }
+	const items = Array.isArray(parsed?.items) ? parsed.items : []
+	if (!items.length) return { ok: false }
+	const isoDate = normalizeDatePhrase(parsed?.date)
+	const rows = []
+	for (const raw of items) {
+		const name = String(raw?.name || '').trim().toLowerCase()
+		if (!name) continue
+		const quantityRaw = Number.parseFloat(raw?.quantity)
+		const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.round(quantityRaw) : 1
+		const unitPriceRaw = Number.parseFloat(raw?.unitPrice)
+		const unitPrice = Number.isFinite(unitPriceRaw) ? unitPriceRaw : 0
+		const totalRaw = Number.parseFloat(raw?.total)
+		const total = Number.isFinite(totalRaw) ? totalRaw : (quantity * unitPrice)
+		rows.push({ item: name, quantity, cost: total || 0 })
+	}
+	if (!rows.length) return { ok: false }
+	const parts = rows.map(r => `${r.item}${r.quantity && r.quantity > 1 ? ` ×${r.quantity}` : ''} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
+	const when = isoDate === toISO(new Date()) ? 'today' : isoDate
+	const summary = `Add: ${parts.join(', ')} for ${when}. Confirm?`
+	return { ok: true, date: isoDate, items: rows, summary }
+}
+
+async function commitAddProposal(supabase, payload) {
+	if (!payload || !Array.isArray(payload.items) || !payload.items.length || !payload.date) return { ok: false, message: 'Missing items to add.' }
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { ok: false, message: 'Sorry, I could not verify your account.' }
+	const userId = userData.user.id
+	const rows = payload.items.map(r => ({ user_id: userId, item: String(r.item).toLowerCase(), quantity: Math.max(1, Math.round(Number(r.quantity || 1))), cost: Number(r.cost) || 0, date: normalizeDatePhrase(payload.date) }))
+	const { data, error } = await supabase
+		.from('expenses')
+		.insert(rows)
+		.select('id,item,cost,quantity,date,created_at')
+	if (error) return { ok: false, message: 'Save failed.' }
+	const parts = rows.map(r => `${r.item}${r.quantity && r.quantity > 1 ? ` ×${r.quantity}` : ''} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
+	const when = rows[0]?.date === toISO(new Date()) ? 'today' : rows[0]?.date
+	return { ok: true, answer: `Added: ${parts.join(', ')} for ${when}.`, added: { date: rows[0]?.date, items: rows.map(r => ({ item: r.item, quantity: r.quantity, cost: r.cost })) } }
+}
+
+async function buildModifyProposal(apiKey, supabase, ctx) {
+	const body = [
+		'Return ONLY strict JSON. No prose. No code fences.',
+		'Schema:',
+		'{',
+		'  "target": { "item": string, "date": string },',
+		'  "update": { "item"?: string, "cost"?: number, "quantity"?: number, "date"?: string }',
+		'}',
+		'Rules:',
+		'- If multiple changes, include all under update.',
+		'- Do not invent values.',
+		'Respond with ONLY the JSON object.',
+	].join('\n')
+	const prompt = buildPrompt({ title: 'Modify proposal extraction', dateIso: ctx.dateIso, history: ctx.history, latest: ctx.latest, body })
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 192 })
+	if (!res.ok) return { answer: 'Please specify what to change.' }
+	let parsed
+	try { parsed = JSON.parse((res.text || '').trim()) } catch { return { answer: 'Please specify what to change.' } }
+	const item = String(parsed?.target?.item || '').trim().toLowerCase()
+	const when = normalizeDatePhrase(parsed?.target?.date)
+	if (!item) return { answer: 'Which item should I edit?' }
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { answer: 'Sorry, I could not verify your account.' }
+	const userId = userData.user.id
+	const { data, error } = await supabase
+		.from('expenses')
+		.select('id,item,cost,quantity,date')
+		.eq('user_id', userId)
+		.eq('date', when)
+		.ilike('item', item)
+		.order('created_at', { ascending: false })
+		.limit(5)
+	if (error) return { answer: 'Sorry, I could not find that expense.' }
+	if (!data || data.length === 0) return { answer: 'I did not find that item on that date.' }
+	if (data.length > 1) return { answer: `I found ${data.length} matches. Please be more specific.` }
+	const target = data[0]
+	const update = {}
+	if (parsed?.update) {
+		if (parsed.update.item) update.item = String(parsed.update.item).trim().toLowerCase()
+		if (Number.isFinite(parsed.update.cost)) update.cost = Number(parsed.update.cost)
+		if (Number.isFinite(parsed.update.quantity)) update.quantity = Math.max(1, Math.round(Number(parsed.update.quantity)))
+		if (parsed.update.date) update.date = normalizeDatePhrase(parsed.update.date)
+	}
+	if (!Object.keys(update).length) return { answer: 'What change should I make?' }
+	const parts = []
+	if (update.item) parts.push(`item → ${update.item}`)
+	if (update.cost != null) parts.push(`cost → ${update.cost}`)
+	if (update.quantity != null) parts.push(`quantity → ${update.quantity}`)
+	if (update.date) parts.push(`date → ${update.date}`)
+	const summary = `Edit ${target.item} on ${target.date}: ${parts.join(', ')}. Confirm?`
+	return { answer: summary, confirmationRequired: true, proposal: { type: 'MODIFY', id: target.id, update } }
+}
+
+async function commitModifyProposal(supabase, payload) {
+	if (!payload || !payload.id || !payload.update) return { answer: 'Missing update details.' }
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { answer: 'Sorry, I could not verify your account.' }
+	const userId = userData.user.id
+	const { data, error } = await supabase
+		.from('expenses')
+		.update(payload.update)
+		.match({ id: payload.id, user_id: userId })
+		.select('id,item,cost,quantity,date,created_at')
+		.single()
+	if (error) return { answer: 'Sorry, I could not save that change.' }
+	return { answer: 'Updated.', updated: data }
+}
+
+async function buildDeleteProposal(apiKey, supabase, ctx) {
+	const body = [
+		'Return ONLY strict JSON. No prose. No code fences.',
+		'Schema:',
+		'{ "target": { "item": string, "date": string } }',
+		'Respond with ONLY the JSON object.',
+	].join('\n')
+	const prompt = buildPrompt({ title: 'Delete proposal extraction', dateIso: ctx.dateIso, history: ctx.history, latest: ctx.latest, body })
+	const res = await callGemini(apiKey, prompt, { temperature: 0, maxOutputTokens: 128 })
+	if (!res.ok) return { answer: 'Which expense should I delete?' }
+	let parsed
+	try { parsed = JSON.parse((res.text || '').trim()) } catch { return { answer: 'Which expense should I delete?' } }
+	const item = String(parsed?.target?.item || '').trim().toLowerCase()
+	const when = normalizeDatePhrase(parsed?.target?.date)
+	if (!item) return { answer: 'Which item should I delete?' }
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { answer: 'Sorry, I could not verify your account.' }
+	const userId = userData.user.id
+	const { data, error } = await supabase
+		.from('expenses')
+		.select('id,item,cost,quantity,date')
+		.eq('user_id', userId)
+		.eq('date', when)
+		.ilike('item', item)
+		.order('created_at', { ascending: false })
+		.limit(5)
+	if (error) return { answer: 'Sorry, I could not find that expense.' }
+	if (!data || data.length === 0) return { answer: 'I did not find that item on that date.' }
+	if (data.length > 1) return { answer: `I found ${data.length} matches. Please be more specific.` }
+	const target = data[0]
+	const summary = `Delete ${target.item} (${Number.isFinite(target.cost) ? String(target.cost) : '0'}) on ${target.date}? Confirm?`
+	return { answer: summary, confirmationRequired: true, proposal: { type: 'DELETE', id: target.id } }
+}
+
+async function commitDeleteProposal(supabase, payload) {
+	if (!payload || !payload.id) return { answer: 'Missing delete details.' }
+	// Resolve authenticated user
+	const { data: userData, error: userErr } = await supabase.auth.getUser()
+	if (userErr || !userData?.user?.id) return { answer: 'Sorry, I could not verify your account.' }
+	const userId = userData.user.id
+	const { error } = await supabase
+		.from('expenses')
+		.delete()
+		.match({ id: payload.id, user_id: userId })
+	if (error) return { answer: 'Sorry, I could not delete that.' }
+	return { answer: 'Deleted.', deleted: { id: payload.id } }
 }
