@@ -1,4 +1,4 @@
-## Feature 0009 — Code Review
+## Feature 00010 — Code Review
 
 ### Summary
 Implementation substantially follows the plan: shadows are removed, the chat page sits within the page container, and behavior (emits, STT, API) remains unchanged. The main gap is that the message list uses a fixed height cap instead of a true flex-based scroll region. Suggested small utility-only tweaks below to fully meet the plan and improve small-screen behavior.
