@@ -6,8 +6,8 @@
 export function formatDay(isoDate) {
   const date = new Date(isoDate)
   return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'long',
+    weekday: 'short',
+    month: 'short',
     day: 'numeric',
     year: 'numeric'
   }).format(date)
@@ -21,7 +21,7 @@ export function formatDay(isoDate) {
 export function formatMonth(isoMonthStart) {
   const date = new Date(isoMonthStart)
   return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
+    month: 'short',
     year: 'numeric'
   }).format(date)
 }

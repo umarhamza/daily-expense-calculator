@@ -131,10 +131,6 @@ function handleAddedFromChat(payload) {
 
 const session = ref(null);
 const userId = computed(() => session.value?.user?.id);
-
-async function logout() {
-  await supabase.auth.signOut();
-}
 </script>
 
 <template>
@@ -159,13 +155,7 @@ async function logout() {
       @touchend="handleSwipe"
       class="min-h-screen bg-gray-50 text-gray-900 pb-16"
     >
-      <v-btn
-        class="fixed top-2 right-2"
-        size="small"
-        variant="text"
-        @click="logout"
-        >Logout</v-btn
-      >
+      
       <main class="mx-auto max-w-md px-3 pt-3">
         <component
           :is="

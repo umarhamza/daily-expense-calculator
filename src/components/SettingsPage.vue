@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from "vue";
-import { getProfile, updateProfile, updateUserPassword } from "@/lib/supabase";
+import { getProfile, updateProfile, updateUserPassword, supabase } from "@/lib/supabase";
 import { addToast, showErrorToast } from "@/lib/toast";
 import PwaInstall from "@/components/PwaInstall.vue";
 
@@ -108,6 +108,15 @@ async function saveSymbol() {
 }
 
 onMounted(loadProfile);
+
+async function logout() {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    showErrorToast(error.message);
+    return;
+  }
+  addToast({ type: "info", title: "Signed out", message: "You have been logged out." });
+}
 </script>
 
 <template>
@@ -166,6 +175,10 @@ onMounted(loadProfile);
           <PwaInstall />
         </div>
       </v-card-text>
+      <v-divider />
+      <v-card-actions class="justify-end">
+        <v-btn color="secondary" variant="tonal" @click="logout">Logout</v-btn>
+      </v-card-actions>
     </v-card>
   </div>
 </template>

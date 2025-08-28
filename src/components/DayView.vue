@@ -101,6 +101,18 @@ const total = computed(() =>
   expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
 );
 const formattedDate = computed(() => formatDay(props.date));
+
+function prevDay() {
+  const ms = Date.parse(props.date);
+  const prev = new Date(ms - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  emit("changeDate", prev);
+}
+function nextDay() {
+  const today = new Date().toISOString().slice(0, 10);
+  const ms = Date.parse(props.date);
+  const next = new Date(ms + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  emit("changeDate", next > today ? today : next);
+}
 function goToday() {
   const today = new Date();
   const iso = today.toISOString().slice(0, 10);
@@ -110,10 +122,7 @@ function goToday() {
 
 <template>
   <div>
-    <v-row class="mb-4" align="center" justify="space-between">
-      <v-col cols="auto">
-        <h1 class="text-h6">{{ formattedDate }}</h1>
-      </v-col>
+    <v-row class="mb-2" align="center" justify="end">
       <v-col cols="auto">
         <v-btn
           v-if="date !== new Date().toISOString().slice(0, 10)"
@@ -125,6 +134,16 @@ function goToday() {
         </v-btn>
       </v-col>
     </v-row>
+
+    <div class="mb-4 flex items-center justify-center gap-3">
+      <v-btn icon variant="text" density="comfortable" @click="prevDay" aria-label="Previous day">
+        <v-icon icon="mdi-chevron-left" />
+      </v-btn>
+      <h1 class="text-h6 text-center">{{ formattedDate }}</h1>
+      <v-btn icon variant="text" density="comfortable" @click="nextDay" aria-label="Next day">
+        <v-icon icon="mdi-chevron-right" />
+      </v-btn>
+    </div>
 
     <div>
       <template v-if="isLoading">
