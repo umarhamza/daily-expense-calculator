@@ -121,16 +121,17 @@ function isExpanded(base) {
               :key="e.id"
               class="flex items-center justify-between px-3 py-2"
             >
-              <div class="text-sm text-gray-800">
+              <div class="text-sm text-gray-500">
+                {{ formatDayShort(e.date) }}
+              </div>
+              <div class="text-sm text-gray-500">
                 {{ e.item
                 }}<span v-if="e.quantity && e.quantity > 1">
                   ×{{ e.quantity }}</span
                 >
               </div>
+
               <div class="text-sm text-gray-500">
-                {{ formatDayShort(e.date) }}
-              </div>
-              <div class="text-sm text-gray-800">
                 {{
                   formatAmount(Number(e.cost ?? 0), {
                     symbolOverride: props.currencySymbol,
