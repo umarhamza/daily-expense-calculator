@@ -164,7 +164,7 @@ onMounted(loadProfile);
               persistent-hint
             />
             <div class="mt-1 d-flex align-center" style="gap: 8px">
-              <span class="text-caption">Quick picks:</span>
+              <span class="text-caption block">Quick picks:</span>
               <v-btn
                 size="x-small"
                 variant="tonal"
