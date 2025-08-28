@@ -73,6 +73,7 @@ async function saveEdit(updated) {
   const { data, error } = await updateExpense(props.userId, updated.id, {
     item: updated.item,
     cost: updated.cost,
+    quantity: updated.quantity,
     date: updated.date,
   });
   if (error) showErrorToast(error.message);
@@ -135,7 +136,7 @@ function goToday() {
         <v-list v-if="expenses.length" lines="one" density="comfortable">
           <template v-for="(e, i) in expenses" :key="e.id ?? i">
             <v-list-item @click="openEdit(e)">
-              <v-list-item-title>{{ e.item }}</v-list-item-title>
+              <v-list-item-title>{{ e.item }}<span v-if="e.quantity && e.quantity > 1"> ×{{ e.quantity }}</span></v-list-item-title>
               <template #append>
                 <div class="font-weight-medium">{{ props.currencySymbol ? formatAmount(e.cost, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(e.cost, props.currency) }}</div>
               </template>

@@ -14,7 +14,7 @@ export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '')
 export async function fetchExpensesByDate(userId, isoDate) {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id,item,cost,date,created_at')
+    .select('id,item,cost,quantity,date,created_at')
     .eq('user_id', userId)
     .eq('date', isoDate)
     .order('created_at', { ascending: false })
@@ -33,7 +33,7 @@ export async function fetchExpensesByMonth(userId, monthDate) {
 
   const { data, error } = await supabase
     .from('expenses')
-    .select('id,item,cost,date,created_at')
+    .select('id,item,cost,quantity,date,created_at')
     .eq('user_id', userId)
     .gte('date', start)
     .lt('date', endExclusive)
@@ -43,28 +43,35 @@ export async function fetchExpensesByMonth(userId, monthDate) {
 
 /**
  * Insert a new expense for the user. Returns { data, error } with the inserted row.
- * Expects expense: { item: string, cost: number, date: YYYY-MM-DD }
+ * Expects expense: { item: string, cost: number, date: YYYY-MM-DD, quantity?: number }
  */
 export async function insertExpense(userId, expense) {
-  const payload = { user_id: userId, item: expense.item, cost: expense.cost, date: expense.date }
+  const q = Number.parseInt(expense.quantity ?? 1, 10)
+  const quantity = Number.isFinite(q) && q > 0 ? q : 1
+  const payload = { user_id: userId, item: expense.item, cost: expense.cost, date: expense.date, quantity }
   const { data, error } = await supabase
     .from('expenses')
     .insert(payload)
-    .select('id,item,cost,date,created_at')
+    .select('id,item,cost,quantity,date,created_at')
     .single()
   return { data, error }
 }
 
 /**
  * Update an existing expense by id for the user. Returns { data, error } with the updated row.
- * Expects expense: { item?: string, cost?: number, date?: YYYY-MM-DD }
+ * Expects expense: { item?: string, cost?: number, date?: YYYY-MM-DD, quantity?: number }
  */
 export async function updateExpense(userId, id, expense) {
+  const update = { ...expense }
+  if (update.quantity != null) {
+    const q = Number.parseInt(update.quantity, 10)
+    update.quantity = Number.isFinite(q) && q > 0 ? q : 1
+  }
   const { data, error } = await supabase
     .from('expenses')
-    .update(expense)
+    .update(update)
     .match({ id, user_id: userId })
-    .select('id,item,cost,date,created_at')
+    .select('id,item,cost,quantity,date,created_at')
     .single()
   return { data, error }
 }
