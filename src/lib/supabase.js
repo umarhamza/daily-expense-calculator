@@ -155,3 +155,76 @@ export async function fetchAutocompleteItems(partial, userId) {
   const unique = Array.from(new Set((data ?? []).map(r => r.item)))
   return { data: unique.map(item => ({ item })), error }
 }
+
+/**
+ * Create a chat row for the user. Returns { data, error } where data contains { id, title, created_at }.
+ * Inputs: title? string
+ */
+export async function createChat(userId, title) {
+  if (!userId) return { data: null, error: new Error('Missing userId') }
+  const payload = { user_id: userId, title: title || null }
+  const { data, error } = await supabase
+    .from('chats')
+    .insert(payload)
+    .select('id,title,created_at')
+    .single()
+  return { data, error }
+}
+
+/**
+ * List chats for the user, newest first. Returns { data, error } where data is array of { id, title, created_at }.
+ */
+export async function listChats(userId) {
+  if (!userId) return { data: [], error: new Error('Missing userId') }
+  const { data, error } = await supabase
+    .from('chats')
+    .select('id,title,created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+  return { data: data ?? [], error }
+}
+
+/**
+ * Delete a chat for the user. Messages are removed via cascade. Returns { error }.
+ */
+export async function deleteChat(userId, chatId) {
+  if (!userId) return { error: new Error('Missing userId') }
+  if (!chatId) return { error: new Error('Missing chatId') }
+  const { error } = await supabase
+    .from('chats')
+    .delete()
+    .match({ id: chatId, user_id: userId })
+  return { error }
+}
+
+/**
+ * Insert a chat message. Returns { data, error } with { id, role, content, created_at }.
+ * Inputs: role in ('user','assistant','system'), content string, meta? ignored for now.
+ */
+export async function insertMessage(userId, chatId, role, content, meta) {
+  if (!userId) return { data: null, error: new Error('Missing userId') }
+  if (!chatId) return { data: null, error: new Error('Missing chatId') }
+  const payload = { user_id: userId, chat_id: chatId, role, content, token_count: meta?.token_count ?? null }
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert(payload)
+    .select('id,role,content,created_at')
+    .single()
+  return { data, error }
+}
+
+/**
+ * List messages for a chat, ascending by created_at. Supports limit and pagination via beforeId if needed.
+ */
+export async function listMessages(userId, chatId, limit = 50) {
+  if (!userId) return { data: [], error: new Error('Missing userId') }
+  if (!chatId) return { data: [], error: new Error('Missing chatId') }
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id,role,content,created_at')
+    .eq('user_id', userId)
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  return { data: data ?? [], error }
+}

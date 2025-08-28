@@ -1,10 +1,11 @@
 <script setup>
-import { ref, watch, nextTick } from "vue";
+import { ref, watch, nextTick, onMounted, computed } from "vue";
 import { supabase } from "@/lib/supabase";
 import { showErrorToast } from "@/lib/toast";
 import { useSpeechToText } from "@/lib/useSpeechToText";
 import IconMicrophone from "./icons/IconMicrophone.vue";
 import IconStop from "./icons/IconStop.vue";
+import { listChats, listMessages } from "@/lib/supabase";
 
 const emit = defineEmits(["added"]);
 
@@ -16,6 +17,12 @@ const isSending = ref(false);
 const errorMessage = ref("");
 const pendingProposal = ref(null);
 const pendingAssistantIndex = ref(-1);
+
+const chatId = ref(null);
+const chats = ref([]);
+const isLoadingChats = ref(false);
+const isLoadingMessages = ref(false);
+const chatOptions = computed(() => (chats.value || []).map(c => ({ id: c.id, title: c.title || 'Untitled' })));
 
 const messagesContainer = ref(null);
 
@@ -54,6 +61,7 @@ function resetChat() {
   errorMessage.value = "";
   pendingProposal.value = null;
   pendingAssistantIndex.value = -1;
+  chatId.value = null;
 }
 
 async function sendMessage() {
@@ -84,7 +92,7 @@ async function sendMessage() {
         "content-type": "application/json",
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question: q, history: buildHistoryPayload() }),
+      body: JSON.stringify({ question: q, history: buildHistoryPayload(), chatId: chatId.value, title: chatId.value ? undefined : q.slice(0, 60) }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -126,6 +134,8 @@ async function sendMessage() {
 
     // Otherwise, show the general answer
     messages.value[pendingIndex] = { role: "assistant", content: json.answer };
+    if (json.chatId && !chatId.value) chatId.value = json.chatId;
+    try { if (chatId.value) await loadMessages(chatId.value); } catch (_) {}
     return;
   } catch (err) {
     messages.value[pendingIndex] = {
@@ -154,6 +164,7 @@ async function confirmProposal() {
       body: JSON.stringify({
         question: "confirm",
         history: buildHistoryPayload(),
+        chatId: chatId.value,
         confirm: {
           type: pendingProposal.value.type,
           payload: pendingProposal.value,
@@ -176,6 +187,8 @@ async function confirmProposal() {
       json.added.items.length
     )
       emit("added", json.added);
+    if (json.chatId && !chatId.value) chatId.value = json.chatId;
+    try { if (chatId.value) await loadMessages(chatId.value); } catch (_) {}
     pendingProposal.value = null;
     pendingAssistantIndex.value = -1;
   } catch (err) {
@@ -209,13 +222,88 @@ watch(
     } catch (_) {}
   }
 );
+
+async function loadChats() {
+  try {
+    isLoadingChats.value = true;
+    const { data } = await supabase.auth.getUser();
+    const userId = data?.user?.id;
+    if (!userId) return;
+    const res = await listChats(userId);
+    if (!res.error) chats.value = res.data || [];
+  } finally {
+    isLoadingChats.value = false;
+  }
+}
+
+async function loadMessages(id) {
+  try {
+    isLoadingMessages.value = true;
+    const { data } = await supabase.auth.getUser();
+    const userId = data?.user?.id;
+    if (!userId || !id) return;
+    const res = await listMessages(userId, id, 100);
+    if (!res.error) {
+      messages.value = (res.data || []).map(m => ({ role: m.role, content: m.content }));
+      if (messages.value.length === 0) messages.value = [{ role: "assistant", content: "Ask me about your spend." }];
+    }
+  } finally {
+    isLoadingMessages.value = false;
+  }
+}
+
+async function selectChat(id) {
+  chatId.value = id || null;
+  if (chatId.value) {
+    await loadMessages(chatId.value);
+  } else {
+    resetChat();
+  }
+}
+
+async function deleteCurrentChat() {
+  try {
+    if (!chatId.value) return;
+    const { data } = await supabase.auth.getUser();
+    const userId = data?.user?.id;
+    if (!userId) return;
+    const { error } = await (await import("@/lib/supabase")).deleteChat(userId, chatId.value);
+    if (!error) {
+      chatId.value = null;
+      await loadChats();
+      resetChat();
+    } else {
+      showErrorToast(error.message || "Failed to delete chat");
+    }
+  } catch (e) {
+    showErrorToast(e?.message || "Failed to delete chat");
+  }
+}
+
+onMounted(async () => {
+  try { await loadChats(); } catch (_) {}
+});
 </script>
 
 <template>
   <div class="d-flex flex-column">
     <header class="d-flex align-center justify-space-between mb-2">
       <h1 class="text-h6">Chat</h1>
-      <v-btn size="small" variant="text" @click="resetChat">New chat</v-btn>
+      <div class="d-flex align-center" style="gap: 8px;">
+        <v-select
+          v-model="chatId"
+          :items="chatOptions"
+          item-title="title"
+          item-value="id"
+          label="Chats"
+          density="compact"
+          style="min-width: 200px;"
+          :loading="isLoadingChats"
+          @update:modelValue="selectChat"
+        />
+        <v-btn size="small" variant="text" @click="resetChat">New chat</v-btn>
+        <v-btn size="small" variant="text" :disabled="!chatId" @click="deleteCurrentChat">Delete</v-btn>
+      </div>
     </header>
     <v-card variant="flat" class="d-flex flex-column">
       <v-card-text
