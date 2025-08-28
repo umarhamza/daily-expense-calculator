@@ -3,7 +3,7 @@
 plan_feature.md
 
 Prompt:
-Use the plan_feature.md file to create a new plan file. <add prompt here>
+Use the plan_feature.md file to create a new plan file. Add the following to the plan: <add prompt here>
 
 --------------
 
