@@ -35,7 +35,9 @@ export async function handler(event) {
 		if (userErr || !userData?.user?.id) return jsonRes(401, { error: 'Not authenticated' })
 		const userId = userData.user.id
 		const chatId = await ensureChat(supabase, userId, requestedChatId, requestedTitle || question.slice(0, 60))
-		if (!chatId) return jsonRes(500, { error: 'Could not create or access chat' })
+		if (!chatId) {
+			return jsonRes(requestedChatId ? 404 : 500, { error: requestedChatId ? 'Chat not found' : 'Could not create chat' })
+		}
 
 		// Persist user message
 		await insertChatMessage(supabase, userId, chatId, 'user', question)
@@ -118,7 +120,7 @@ async function ensureChat(supabase, userId, maybeChatId, title) {
         .eq('id', maybeChatId)
         .eq('user_id', userId)
         .maybeSingle()
-      if (data && data.id) return data.id
+      return data?.id || null
     }
     const ttl = String(title || '').slice(0, 80) || null
     const { data: inserted } = await supabase
@@ -135,38 +137,43 @@ async function ensureChat(supabase, userId, maybeChatId, title) {
 async function insertChatMessage(supabase, userId, chatId, role, content) {
   try {
     const c = String(content || '').slice(0, 8000)
-    await supabase
+    const { data } = await supabase
       .from('chat_messages')
       .insert({ user_id: userId, chat_id: chatId, role, content: c })
-    return true
+      .select('id')
+      .single()
+    return data?.id || null
   } catch {
-    return false
+    return null
   }
 }
 
 async function fetchChatHistoryForPrompt(supabase, userId, chatId, limit) {
   try {
+    const count = limit || 20
     const { data } = await supabase
       .from('chat_messages')
       .select('role,content')
       .eq('user_id', userId)
       .eq('chat_id', chatId)
-      .order('created_at', { ascending: true })
-      .limit(limit || 20)
+      .order('created_at', { ascending: false })
+      .limit(count)
     const cleaned = (data || [])
       .map(x => ({ role: String(x.role || '').toLowerCase(), content: String(x.content || '').trim() }))
       .filter(x => (x.role === 'user' || x.role === 'assistant') && x.content)
-    return cleaned.slice(-1 * (limit || 20))
+      .reverse()
+    return cleaned.slice(0, count)
   } catch {
     return []
   }
 }
 
 async function respondWithAssistantMessage(supabase, userId, chatId, statusCode, payload) {
+  let messageId = null
   if (payload && payload.answer) {
-    try { await insertChatMessage(supabase, userId, chatId, 'assistant', payload.answer) } catch {}
+    try { messageId = await insertChatMessage(supabase, userId, chatId, 'assistant', payload.answer) } catch {}
   }
-  const body = { ...(payload || {}), chatId }
+  const body = { ...(payload || {}), chatId, messageId }
   return jsonRes(statusCode, body)
 }
 

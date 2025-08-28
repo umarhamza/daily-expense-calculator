@@ -124,7 +124,7 @@ async function confirmProposal() {
 				'content-type': 'application/json',
 				'authorization': `Bearer ${token}`,
 			},
-			body: JSON.stringify({ question: 'confirm', history: buildHistoryPayload(), confirm: { type: pendingProposal.value.type, payload: pendingProposal.value } }),
+			body: JSON.stringify({ question: 'confirm', history: buildHistoryPayload(), chatId: chatId.value, confirm: { type: pendingProposal.value.type, payload: pendingProposal.value } }),
 		})
 		const json = await res.json().catch(() => ({}))
 		if (!res.ok) throw new Error(json.error || 'Failed to confirm')
@@ -134,6 +134,7 @@ async function confirmProposal() {
 			messages.value.push({ role: 'assistant', content: json.answer })
 		}
 		if (json.added && Array.isArray(json.added.items) && json.added.items.length) emit('added', json.added)
+		if (json.chatId && !chatId.value) chatId.value = json.chatId
 		pendingProposal.value = null
 		pendingAssistantIndex.value = -1
 	} catch (err) {

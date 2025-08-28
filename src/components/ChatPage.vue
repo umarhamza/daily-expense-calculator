@@ -164,6 +164,7 @@ async function confirmProposal() {
       body: JSON.stringify({
         question: "confirm",
         history: buildHistoryPayload(),
+        chatId: chatId.value,
         confirm: {
           type: pendingProposal.value.type,
           payload: pendingProposal.value,
@@ -186,6 +187,8 @@ async function confirmProposal() {
       json.added.items.length
     )
       emit("added", json.added);
+    if (json.chatId && !chatId.value) chatId.value = json.chatId;
+    try { if (chatId.value) await loadMessages(chatId.value); } catch (_) {}
     pendingProposal.value = null;
     pendingAssistantIndex.value = -1;
   } catch (err) {
