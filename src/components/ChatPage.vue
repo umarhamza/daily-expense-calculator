@@ -12,6 +12,8 @@ const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }
 const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
+const pendingProposal = ref(null)
+const pendingAssistantIndex = ref(-1)
 
 const messagesContainer = ref(null)
 
@@ -30,6 +32,21 @@ watch(sttError, (e) => {
   }
 })
 
+function buildHistoryPayload() {
+  const cleaned = messages.value
+    .filter(m => m && m.content && m.content !== 'Thinking…')
+    .map(m => ({ role: m.role, content: m.content }))
+  return cleaned.slice(-20)
+}
+
+function resetChat() {
+  messages.value = [{ role: 'assistant', content: 'Ask me about your spend.' }]
+  input.value = ''
+  errorMessage.value = ''
+  pendingProposal.value = null
+  pendingAssistantIndex.value = -1
+}
+
 async function sendMessage() {
   const q = input.value.trim()
   if (!q || isSending.value) return
@@ -42,6 +59,7 @@ async function sendMessage() {
 
   // Placeholder for assistant while loading
   const pendingIndex = messages.value.push({ role: 'assistant', content: 'Thinking…' }) - 1
+  pendingAssistantIndex.value = pendingIndex
 
   try {
     const { data } = await supabase.auth.getSession()
@@ -54,11 +72,18 @@ async function sendMessage() {
         'content-type': 'application/json',
         'authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ question: q }),
+      body: JSON.stringify({ question: q, history: buildHistoryPayload() }),
     })
 
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(json.error || 'Failed to get answer')
+
+    // Handle confirmation-required flows
+    if (json.confirmationRequired && json.proposal) {
+      pendingProposal.value = json.proposal
+      messages.value[pendingIndex] = { role: 'assistant', content: json.answer }
+      return
+    }
 
     // If backend added items, emit to parent and show confirmation
     if (json.added && Array.isArray(json.added.items) && json.added.items.length) {
@@ -84,6 +109,48 @@ async function sendMessage() {
   }
 }
 
+async function confirmProposal() {
+  if (!pendingProposal.value || isSending.value) return
+  isSending.value = true
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data?.session?.access_token
+    if (!token) throw new Error('Not authenticated')
+    const res = await fetch('/.netlify/functions/chat', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ question: 'confirm', history: buildHistoryPayload(), confirm: { type: pendingProposal.value.type, payload: pendingProposal.value } }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.error || 'Failed to confirm')
+    if (pendingAssistantIndex.value >= 0) {
+      messages.value[pendingAssistantIndex.value] = { role: 'assistant', content: json.answer }
+    } else {
+      messages.value.push({ role: 'assistant', content: json.answer })
+    }
+    if (json.added && Array.isArray(json.added.items) && json.added.items.length) emit('added', json.added)
+    pendingProposal.value = null
+    pendingAssistantIndex.value = -1
+  } catch (err) {
+    errorMessage.value = err?.message || 'Something went wrong'
+  } finally {
+    isSending.value = false
+  }
+}
+
+function cancelProposal() {
+  pendingProposal.value = null
+  if (pendingAssistantIndex.value >= 0) {
+    messages.value[pendingAssistantIndex.value] = { role: 'assistant', content: 'Okay, cancelled.' }
+  } else {
+    messages.value.push({ role: 'assistant', content: 'Okay, cancelled.' })
+  }
+  pendingAssistantIndex.value = -1
+}
+
 // Auto-scroll to bottom when new messages arrive
 watch(() => messages.value.length, async () => {
   await nextTick()
@@ -98,6 +165,7 @@ watch(() => messages.value.length, async () => {
   <div class="d-flex flex-column">
     <header class="d-flex align-center justify-space-between mb-2">
       <h1 class="text-h6">Chat</h1>
+      <v-btn size="small" variant="text" @click="resetChat">New chat</v-btn>
     </header>
     <v-card variant="flat" class="d-flex flex-column" style="min-height: calc(100vh - 140px);">
       <v-card-text class="pt-3 d-flex flex-column flex-1" style="gap: 8px; min-height: 0;">
@@ -106,6 +174,10 @@ watch(() => messages.value.length, async () => {
             <span class="d-inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-grey-lighten-3 text-grey-darken-4'">{{ m.content }}</span>
           </div>
         </v-sheet>
+        <div v-if="pendingProposal" class="d-flex align-center" style="gap: 8px;">
+          <v-btn color="primary" :disabled="isSending" @click="confirmProposal">Confirm</v-btn>
+          <v-btn variant="text" :disabled="isSending" @click="cancelProposal">Cancel</v-btn>
+        </div>
         <v-alert v-if="errorMessage" type="error" density="comfortable">{{ errorMessage }}</v-alert>
         <p v-if="sttError" class="text-xs text-red-600">{{ sttError }}</p>
         <div class="d-flex align-center" style="gap: 8px;">
