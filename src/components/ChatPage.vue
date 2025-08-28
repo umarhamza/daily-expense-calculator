@@ -217,11 +217,7 @@ watch(
       <h1 class="text-h6">Chat</h1>
       <v-btn size="small" variant="text" @click="resetChat">New chat</v-btn>
     </header>
-    <v-card
-      variant="flat"
-      class="d-flex flex-column"
-      style="min-height: calc(80vh - 140px)"
-    >
+    <v-card variant="flat" class="d-flex flex-column">
       <v-card-text
         class="pt-3 d-flex flex-column flex-1"
         style="gap: 8px; min-height: 0"
