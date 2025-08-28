@@ -1,81 +1,30 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from "vue";
-import { addToast } from "@/lib/toast";
-import { getDeferredPrompt, clearDeferredPrompt } from "@/lib/pwa-install";
+import { ref, onMounted, onUnmounted } from "vue";
+import PwaInstallModal from "@/components/PwaInstallModal.vue";
 
-const canInstall = ref(false);
 const isStandalone = ref(false);
-const infoMessage = ref("");
-const isMobile = ref(false);
-const isIOS = ref(false);
-
-const emit = defineEmits(["installed"]);
-
-function handleAppInstalled() {
-  canInstall.value = false;
-  clearDeferredPrompt();
-  addToast({
-    type: "success",
-    title: "Installed",
-    message: "App installed successfully",
-  });
-  emit("installed");
-}
-
-function handleCanInstall() {
-  canInstall.value = true;
-  infoMessage.value = "";
-}
-
-async function install() {
-  const ev = getDeferredPrompt();
-  if (ev) {
-    ev.prompt();
-    const choice = await ev.userChoice;
-    if (choice?.outcome === "accepted") canInstall.value = false;
-    return;
-  }
-  infoMessage.value = isIOS.value
-    ? "On iOS, use Share → Add to Home Screen."
-    : "Install not available yet in this browser. Try again later.";
-}
+const showModal = ref(false);
 
 onMounted(() => {
   const mq = window.matchMedia("(display-mode: standalone)");
-  isStandalone.value = mq.matches || window.navigator.standalone === true;
-
-  const ua = navigator.userAgent || "";
-  const isiPadOSDesktopUA =
-    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-  isMobile.value =
-    /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isiPadOSDesktopUA;
-  isIOS.value = /iPad|iPhone|iPod/i.test(ua) || isiPadOSDesktopUA;
-
-  if (isMobile.value && !isStandalone.value) {
-    if (getDeferredPrompt()) handleCanInstall();
-    window.addEventListener("pwa:can-install", handleCanInstall);
-    window.addEventListener("appinstalled", handleAppInstalled);
+  const updateStandalone = () => {
+    isStandalone.value = mq.matches || window.navigator.standalone === true;
+  };
+  updateStandalone();
+  try {
+    mq.addEventListener("change", updateStandalone);
+  } catch (_) {
+    // Safari < 14 fallback
+    mq.addListener(updateStandalone);
   }
 
-  setTimeout(() => {
-    if (
-      !isStandalone.value &&
-      isMobile.value &&
-      !canInstall.value &&
-      !getDeferredPrompt()
-    ) {
-      infoMessage.value = isIOS.value
-        ? "On iOS, use Share → Add to Home Screen."
-        : "Install not available yet in this browser. Try again later.";
+  onUnmounted(() => {
+    try {
+      mq.removeEventListener("change", updateStandalone);
+    } catch (_) {
+      mq.removeListener(updateStandalone);
     }
-  }, 1500);
-});
-
-onBeforeUnmount(() => {
-  if (isMobile.value) {
-    window.removeEventListener("pwa:can-install", handleCanInstall);
-    window.removeEventListener("appinstalled", handleAppInstalled);
-  }
+  });
 });
 </script>
 
@@ -89,15 +38,10 @@ onBeforeUnmount(() => {
       >App is installed</v-alert
     >
     <div v-else>
-      <div v-if="isMobile" class="d-flex align-center" style="gap: 8px">
-        <v-btn color="primary" @click="install">Install App</v-btn>
-        <span
-          v-if="!canInstall && infoMessage"
-          class="text-caption text-medium-emphasis"
-          >{{ infoMessage }}</span
-        >
+      <div class="d-flex align-center">
+        <v-btn color="primary" @click="showModal = true">Install App</v-btn>
       </div>
-      <!-- Desktop: no CTA or guidance per requirement -->
+      <PwaInstallModal v-model="showModal" />
     </div>
   </div>
 </template>

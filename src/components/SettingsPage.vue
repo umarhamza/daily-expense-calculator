@@ -14,11 +14,8 @@ const confirmPassword = ref("");
 
 // currency dropdown and quick picks removed per @0008 plan
 
-// Detect mobile/touch-capable environment for showing PWA install section
-const isMobileEnv =
-  typeof navigator !== "undefined" &&
-  (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+// Always show PWA section; the Install button opens instructions modal
+const isMobileEnv = true;
 
 async function loadProfile() {
   if (!props.userId) {
