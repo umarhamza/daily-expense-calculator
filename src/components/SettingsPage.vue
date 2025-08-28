@@ -110,12 +110,13 @@ async function saveSymbol() {
 onMounted(loadProfile);
 
 async function logout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    showErrorToast(error.message);
-    return;
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    addToast({ type: "info", title: "Signed out", message: "You have been logged out." });
+  } catch (err) {
+    showErrorToast(err?.message || "Failed to sign out");
   }
-  addToast({ type: "info", title: "Signed out", message: "You have been logged out." });
 }
 </script>
 

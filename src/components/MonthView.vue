@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
-import { formatMonth, formatDayShort } from "@/lib/date";
+import { formatMonth, formatDayShort, getPrevMonthStartIso, getNextMonthStartIsoClampedToCurrent } from "@/lib/date";
 import { formatAmount } from "@/lib/currency";
 import { showErrorToast } from "@/lib/toast";
 
@@ -62,28 +62,18 @@ const grandTotal = computed(() =>
   expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
 );
 const formattedMonth = computed(() => formatMonth(props.monthDate));
+const currentMonthStart = computed(() => new Date().toISOString().slice(0,7) + '-01');
+const isAtCurrentMonth = computed(() => props.monthDate >= currentMonthStart.value);
 
-function getPreviousMonthStart(isoDate) {
-  const date = new Date(isoDate);
-  const prev = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1));
-  return prev.toISOString().slice(0, 10);
-}
-function getNextMonthStart(isoDate) {
-  const date = new Date(isoDate);
-  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-  return next.toISOString().slice(0, 10);
-}
 function goPrevMonth() {
-  emit('changeDate', getPreviousMonthStart(props.monthDate));
+  emit('changeDate', getPrevMonthStartIso(props.monthDate));
 }
 function goNextMonth() {
-  const currentMonthStart = new Date().toISOString().slice(0,7) + '-01';
-  const next = getNextMonthStart(props.monthDate);
-  emit('changeDate', next > currentMonthStart ? currentMonthStart : next);
+  const next = getNextMonthStartIsoClampedToCurrent(props.monthDate);
+  emit('changeDate', next);
 }
 function goCurrentMonth() {
-  const currentMonthStart = new Date().toISOString().slice(0,7) + '-01';
-  emit('changeDate', currentMonthStart);
+  emit('changeDate', currentMonthStart.value);
 }
 
 // Track expanded states by base name; allow multiple open
@@ -102,14 +92,14 @@ function isExpanded(base) {
 <template>
   <div class="pb-16">
     <div class="mb-2 flex items-center justify-end">
-      <v-btn variant="text" density="comfortable" @click="goCurrentMonth">Current Month</v-btn>
+      <v-btn variant="text" density="comfortable" @click="goCurrentMonth" title="Jump to current month">Current Month</v-btn>
     </div>
     <header class="flex items-center justify-center gap-3 mb-4">
-      <v-btn icon variant="text" density="comfortable" @click="goPrevMonth" aria-label="Previous month">
+      <v-btn icon variant="text" density="comfortable" @click="goPrevMonth" aria-label="Previous month" title="Previous month">
         <v-icon icon="mdi-chevron-left" />
       </v-btn>
       <h1 class="text-xl font-semibold text-center">{{ formattedMonth }}</h1>
-      <v-btn icon variant="text" density="comfortable" @click="goNextMonth" aria-label="Next month">
+      <v-btn icon variant="text" density="comfortable" @click="goNextMonth" :disabled="isAtCurrentMonth" aria-label="Next month" title="Next month">
         <v-icon icon="mdi-chevron-right" />
       </v-btn>
     </header>

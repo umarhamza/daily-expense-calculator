@@ -2,7 +2,7 @@
 import { ref, computed, watchEffect, watch } from "vue";
 import AddExpenseModal from "./AddExpenseModal.vue";
 import { fetchExpensesByDate, insertExpense } from "@/lib/supabase";
-import { formatDay } from "@/lib/date";
+import { formatDay, getPrevDayIso, getNextDayIsoClampedToToday } from "@/lib/date";
 import { formatAmount } from "@/lib/currency";
 
 // Edit modal state
@@ -102,16 +102,16 @@ const total = computed(() =>
 );
 const formattedDate = computed(() => formatDay(props.date));
 
+const isAtToday = computed(() => {
+  const today = new Date().toISOString().slice(0, 10);
+  return props.date >= today;
+});
+
 function prevDay() {
-  const ms = Date.parse(props.date);
-  const prev = new Date(ms - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  emit("changeDate", prev);
+  emit("changeDate", getPrevDayIso(props.date));
 }
 function nextDay() {
-  const today = new Date().toISOString().slice(0, 10);
-  const ms = Date.parse(props.date);
-  const next = new Date(ms + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  emit("changeDate", next > today ? today : next);
+  emit("changeDate", getNextDayIsoClampedToToday(props.date));
 }
 function goToday() {
   const today = new Date();
@@ -129,6 +129,7 @@ function goToday() {
           variant="text"
           density="comfortable"
           @click="goToday"
+          title="Jump to today"
         >
           Today
         </v-btn>
@@ -136,11 +137,11 @@ function goToday() {
     </v-row>
 
     <div class="mb-4 flex items-center justify-center gap-3">
-      <v-btn icon variant="text" density="comfortable" @click="prevDay" aria-label="Previous day">
+      <v-btn icon variant="text" density="comfortable" @click="prevDay" aria-label="Previous day" title="Previous day">
         <v-icon icon="mdi-chevron-left" />
       </v-btn>
       <h1 class="text-h6 text-center">{{ formattedDate }}</h1>
-      <v-btn icon variant="text" density="comfortable" @click="nextDay" aria-label="Next day">
+      <v-btn icon variant="text" density="comfortable" @click="nextDay" :disabled="isAtToday" aria-label="Next day" title="Next day">
         <v-icon icon="mdi-chevron-right" />
       </v-btn>
     </div>
