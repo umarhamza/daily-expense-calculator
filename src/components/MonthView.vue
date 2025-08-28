@@ -8,8 +8,8 @@ import { showErrorToast } from "@/lib/toast";
 const props = defineProps({
   monthDate: { type: String, required: true },
   userId: { type: String, required: true },
-  currency: { type: String, default: 'USD' },
-  currencySymbol: { type: String, default: '' },
+  currency: { type: String, default: "USD" },
+  currencySymbol: { type: String, default: "" },
 });
 
 const expenses = ref([]);
@@ -19,7 +19,10 @@ watchEffect(async () => {
     expenses.value = [];
     return;
   }
-  const { data, error } = await fetchExpensesByMonth(props.userId, props.monthDate);
+  const { data, error } = await fetchExpensesByMonth(
+    props.userId,
+    props.monthDate
+  );
   if (error) showErrorToast(error.message);
   expenses.value = data ?? [];
 });
@@ -45,7 +48,8 @@ const groups = computed(() => {
   const arr = Array.from(byBase.values());
   for (const g of arr) {
     g.items.sort((a, b) => {
-      if (a.date === b.date) return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+      if (a.date === b.date)
+        return (b.created_at ?? "").localeCompare(a.created_at ?? "");
       return b.date.localeCompare(a.date);
     });
     g.count = g.items.length;
@@ -54,14 +58,17 @@ const groups = computed(() => {
   return arr;
 });
 
-const grandTotal = computed(() => expenses.value.reduce((s, e) => s + e.cost, 0));
+const grandTotal = computed(() =>
+  expenses.value.reduce((s, e) => s + e.cost, 0)
+);
 const formattedMonth = computed(() => formatMonth(props.monthDate));
 
 // Track expanded states by base name; allow multiple open
 const expanded = ref(new Set());
 function toggleExpanded(base) {
   const next = new Set(expanded.value);
-  if (next.has(base)) next.delete(base); else next.add(base);
+  if (next.has(base)) next.delete(base);
+  else next.add(base);
   expanded.value = next;
 }
 function isExpanded(base) {
@@ -78,12 +85,21 @@ function isExpanded(base) {
     <div class="space-y-2">
       <template v-for="g in groups" :key="g.base">
         <div
-          class="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg p-3 cursor-pointer select-none"
+          class="flex items-center justify-between bg-white border border-gray-100 rounded-lg p-3 cursor-pointer select-none"
           @click="toggleExpanded(g.base)"
         >
-          <div class="font-medium">{{ g.base }} <span class="text-gray-500">({{ g.count }})</span></div>
-          <div class="text-gray-700 dark:text-gray-200 flex items-center gap-2">
-            <span>{{ props.currencySymbol ? formatAmount(g.sum, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(g.sum, props.currency) }}</span>
+          <div class="font-medium">
+            {{ g.base }} <span class="text-gray-500">({{ g.count }})</span>
+          </div>
+          <div class="text-gray-700 flex items-center gap-2">
+            <span>{{
+              props.currencySymbol
+                ? formatAmount(g.sum, {
+                    code: props.currency,
+                    symbolOverride: props.currencySymbol,
+                  })
+                : formatCurrency(g.sum, props.currency)
+            }}</span>
             <svg
               :class="isExpanded(g.base) ? 'rotate-180' : ''"
               class="w-4 h-4 text-gray-500 transition-transform"
@@ -91,40 +107,66 @@ function isExpanded(base) {
               fill="currentColor"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+              <path
+                fill-rule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+                clip-rule="evenodd"
+              />
             </svg>
           </div>
         </div>
         <div
-          class="overflow-hidden transition-all duration-200 bg-white/70 dark:bg-gray-800/70 border border-t-0 border-gray-100 dark:border-gray-700 rounded-b-lg -mt-2"
-          :class="isExpanded(g.base) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'"
+          class="overflow-hidden transition-all duration-200 bg-white/70 border border-t-0 border-gray-100 rounded-b-lg -mt-2"
+          :class="
+            isExpanded(g.base) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+          "
         >
-          <ul class="divide-y divide-gray-100 dark:divide-gray-700">
+          <ul class="divide-y divide-gray-100">
             <li
               v-for="e in g.items"
               :key="e.id"
               class="flex items-center justify-between px-3 py-2"
             >
-              <div class="text-sm text-gray-800 dark:text-gray-200">{{ e.item }}<span v-if="e.quantity && e.quantity > 1"> ×{{ e.quantity }}</span></div>
-              <div class="text-sm text-gray-500">{{ formatDayShort(e.date) }}</div>
-              <div class="text-sm text-gray-800 dark:text-gray-200">{{ props.currencySymbol ? formatAmount(e.cost, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(e.cost, props.currency) }}</div>
+              <div class="text-sm text-gray-800">
+                {{ e.item
+                }}<span v-if="e.quantity && e.quantity > 1">
+                  ×{{ e.quantity }}</span
+                >
+              </div>
+              <div class="text-sm text-gray-500">
+                {{ formatDayShort(e.date) }}
+              </div>
+              <div class="text-sm text-gray-800">
+                {{
+                  props.currencySymbol
+                    ? formatAmount(e.cost, {
+                        code: props.currency,
+                        symbolOverride: props.currencySymbol,
+                      })
+                    : formatCurrency(e.cost, props.currency)
+                }}
+              </div>
             </li>
           </ul>
         </div>
       </template>
-      <div
-        v-if="!groups.length"
-        class="text-center text-gray-400 dark:text-gray-400 py-10"
-      >
+      <div v-if="!groups.length" class="text-center text-gray-400 py-10">
         No data for this month
       </div>
     </div>
 
-    <div
-      class="mt-6 flex items-center justify-between text-gray-800 dark:text-gray-200"
-    >
+    <div class="mt-6 flex items-center justify-between text-gray-800">
       <div class="font-semibold">Total</div>
-      <div class="font-semibold">{{ props.currencySymbol ? formatAmount(grandTotal, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(grandTotal, props.currency) }}</div>
+      <div class="font-semibold">
+        {{
+          props.currencySymbol
+            ? formatAmount(grandTotal, {
+                code: props.currency,
+                symbolOverride: props.currencySymbol,
+              })
+            : formatCurrency(grandTotal, props.currency)
+        }}
+      </div>
     </div>
   </div>
 </template>
