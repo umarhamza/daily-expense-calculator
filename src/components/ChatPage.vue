@@ -88,15 +88,15 @@ async function sendMessage() {
     <header class="d-flex align-center justify-space-between mb-2">
       <h1 class="text-h6">Chat</h1>
     </header>
-    <v-card>
-      <v-card-text class="pt-3">
-        <v-sheet class="pa-3 mb-3" rounded="md" border style="max-height: 360px; overflow-y: auto;">
+    <v-card variant="flat">
+      <v-card-text class="pt-3 d-flex flex-column" style="gap: 8px;">
+        <v-sheet class="pa-3" rounded="md" border style="max-height: 60vh; overflow-y: auto;">
           <div v-for="(m, i) in messages" :key="i" class="text-body-2" :class="m.role === 'user' ? 'text-right' : 'text-left'">
             <span class="d-inline-block px-3 py-2 rounded-lg" :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-grey-lighten-3 text-grey-darken-4'">{{ m.content }}</span>
           </div>
         </v-sheet>
-        <v-alert v-if="errorMessage" type="error" density="comfortable" class="mb-2">{{ errorMessage }}</v-alert>
-        <p v-if="sttError" class="text-xs text-red-600 mb-2">{{ sttError }}</p>
+        <v-alert v-if="errorMessage" type="error" density="comfortable">{{ errorMessage }}</v-alert>
+        <p v-if="sttError" class="text-xs text-red-600">{{ sttError }}</p>
         <div class="d-flex align-center" style="gap: 8px;">
           <v-text-field
             v-model="input"
