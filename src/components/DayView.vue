@@ -3,7 +3,7 @@ import { ref, computed, watchEffect, watch } from "vue";
 import AddExpenseModal from "./AddExpenseModal.vue";
 import { fetchExpensesByDate, insertExpense } from "@/lib/supabase";
 import { formatDay } from "@/lib/date";
-import { formatCurrency, formatAmount } from "@/lib/currency";
+import { formatAmount } from "@/lib/currency";
 
 // Edit modal state
 import EditExpenseModal from "./EditExpenseModal.vue";
@@ -16,8 +16,7 @@ const props = defineProps({
   date: { type: String, required: true },
   userId: { type: String, required: true },
   refreshKey: { type: Number, default: 0 },
-  currency: { type: String, default: 'USD' },
-  currencySymbol: { type: String, default: '' },
+  currencySymbol: { type: String, default: "" },
 });
 const emit = defineEmits(["changeDate"]);
 
@@ -41,12 +40,15 @@ watchEffect(async () => {
 });
 
 // Silent refetch on refreshKey changes without showing loading skeletons
-watch(() => props.refreshKey, async () => {
-  if (!props.userId || !props.date) return;
-  const { data, error } = await fetchExpensesByDate(props.userId, props.date);
-  if (error) showErrorToast(error.message);
-  expenses.value = data ?? [];
-});
+watch(
+  () => props.refreshKey,
+  async () => {
+    if (!props.userId || !props.date) return;
+    const { data, error } = await fetchExpensesByDate(props.userId, props.date);
+    if (error) showErrorToast(error.message);
+    expenses.value = data ?? [];
+  }
+);
 
 function openModal() {
   isModalOpen.value = true;
@@ -95,7 +97,9 @@ async function confirmAndDelete(toDelete) {
   closeEdit();
 }
 
-const total = computed(() => expenses.value.reduce((s, e) => s + e.cost, 0));
+const total = computed(() =>
+  expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
+);
 const formattedDate = computed(() => formatDay(props.date));
 function goToday() {
   const today = new Date();
@@ -136,15 +140,32 @@ function goToday() {
         <v-list v-if="expenses.length" lines="one" density="comfortable">
           <template v-for="(e, i) in expenses" :key="e.id ?? i">
             <v-list-item @click="openEdit(e)">
-              <v-list-item-title>{{ e.item }}<span v-if="e.quantity && e.quantity > 1"> ×{{ e.quantity }}</span></v-list-item-title>
+              <v-list-item-title
+                >{{ e.item
+                }}<span v-if="e.quantity && e.quantity > 1">
+                  ×{{ e.quantity }}</span
+                ></v-list-item-title
+              >
               <template #append>
-                <div class="font-weight-medium">{{ props.currencySymbol ? formatAmount(e.cost, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(e.cost, props.currency) }}</div>
+                <div class="font-weight-medium">
+                  {{
+                    formatAmount(Number(e.cost ?? 0), {
+                      symbolOverride: props.currencySymbol,
+                    })
+                  }}
+                </div>
               </template>
             </v-list-item>
             <v-divider v-if="i < expenses.length - 1" />
           </template>
         </v-list>
-        <v-alert v-else type="info" variant="tonal" density="comfortable" class="text-center py-8">
+        <v-alert
+          v-else
+          type="info"
+          variant="tonal"
+          density="comfortable"
+          class="text-center py-8"
+        >
           No expenses yet
         </v-alert>
       </template>
@@ -155,7 +176,9 @@ function goToday() {
         <div class="font-weight-medium">Total</div>
       </v-col>
       <v-col cols="auto">
-        <div v-if="!isLoading" class="font-weight-medium">{{ props.currencySymbol ? formatAmount(total, { code: props.currency, symbolOverride: props.currencySymbol }) : formatCurrency(total, props.currency) }}</div>
+        <div v-if="!isLoading" class="font-weight-medium">
+          {{ formatAmount(total, { symbolOverride: props.currencySymbol }) }}
+        </div>
         <v-skeleton-loader v-else type="text" width="80" />
       </v-col>
     </v-row>

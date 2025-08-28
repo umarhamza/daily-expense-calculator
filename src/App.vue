@@ -8,7 +8,6 @@ import ChatPage from "./components/ChatPage.vue";
 import AuthForm from "./components/AuthForm.vue";
 import SettingsPage from "./components/SettingsPage.vue";
 import { getProfile } from "@/lib/supabase";
-import { getDefaultCurrency } from "@/lib/currency";
 import { supabase } from "@/lib/supabase";
 import Toasts from "./components/Toasts.vue";
 
@@ -24,26 +23,28 @@ const selectedDate = ref(todayIso);
 const monthOfSelected = computed(() => selectedDate.value.slice(0, 7) + "-01");
 
 const refreshKey = ref(0);
-const currency = ref(getDefaultCurrency());
 const currencySymbol = ref("");
+const isAppReady = ref(false);
 
 const container = ref(null);
 const { direction, isSwiping } = useSwipe(container, { threshold: 30 });
 
 onMounted(async () => {
-  const { data } = await supabase.auth.getSession();
-  session.value = data.session;
-  supabase.auth.onAuthStateChange((_, s) => {
-    session.value = s;
-  });
-  if (session.value?.user?.id) {
-    try {
-      const { data: profile } = await getProfile(session.value.user.id);
-      if (profile?.currency && profile.currency.length === 3)
-        currency.value = profile.currency;
-      if (typeof profile?.currency_symbol === "string")
-        currencySymbol.value = profile.currency_symbol;
-    } catch (_) {}
+  try {
+    const { data } = await supabase.auth.getSession();
+    session.value = data.session;
+    supabase.auth.onAuthStateChange((_, s) => {
+      session.value = s;
+    });
+    if (session.value?.user?.id) {
+      try {
+        const { data: profile } = await getProfile(session.value.user.id);
+        if (typeof profile?.currency_symbol === "string")
+          currencySymbol.value = profile.currency_symbol;
+      } catch (_) {}
+    }
+  } finally {
+    isAppReady.value = true;
   }
 });
 
@@ -138,11 +139,18 @@ async function logout() {
 
 <template>
   <v-app>
-    <div v-if="!session" class="min-h-screen">
+    <div
+      v-if="!isAppReady"
+      class="fixed inset-0 z-50 grid place-items-center bg-white"
+    >
+      <v-progress-circular indeterminate color="primary" size="48" />
+    </div>
+    <div v-if="!session" v-show="isAppReady" class="min-h-screen">
       <AuthForm />
     </div>
     <div
       v-else
+      v-show="isAppReady"
       ref="container"
       @touchend="handleSwipe"
       class="min-h-screen bg-gray-50 text-gray-900 pb-16"
@@ -169,13 +177,11 @@ async function logout() {
             currentView === 'settings'
               ? { userId }
               : currentView === 'day'
-              ? { date: selectedDate, userId, refreshKey }
+              ? { date: selectedDate, userId, refreshKey, currencySymbol }
               : currentView === 'month'
-              ? { monthDate: monthOfSelected, userId }
+              ? { monthDate: monthOfSelected, userId, currencySymbol }
               : {}
           "
-          :currency="currency"
-          :currencySymbol="currencySymbol"
           @changeDate="(d) => (selectedDate = d)"
           @added="handleAddedFromChat"
         />

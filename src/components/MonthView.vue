@@ -2,13 +2,12 @@
 import { computed, ref, watchEffect } from "vue";
 import { fetchExpensesByMonth } from "@/lib/supabase";
 import { formatMonth, formatDayShort } from "@/lib/date";
-import { formatCurrency, formatAmount } from "@/lib/currency";
+import { formatAmount } from "@/lib/currency";
 import { showErrorToast } from "@/lib/toast";
 
 const props = defineProps({
   monthDate: { type: String, required: true },
   userId: { type: String, required: true },
-  currency: { type: String, default: "USD" },
   currencySymbol: { type: String, default: "" },
 });
 
@@ -43,7 +42,7 @@ const groups = computed(() => {
     if (!byBase.has(base)) byBase.set(base, { base, items: [], sum: 0 });
     const bucket = byBase.get(base);
     bucket.items.push(e);
-    bucket.sum += e.cost;
+    bucket.sum += Number(e?.cost ?? 0);
   }
   const arr = Array.from(byBase.values());
   for (const g of arr) {
@@ -59,7 +58,7 @@ const groups = computed(() => {
 });
 
 const grandTotal = computed(() =>
-  expenses.value.reduce((s, e) => s + e.cost, 0)
+  expenses.value.reduce((sum, row) => sum + Number(row?.cost ?? 0), 0)
 );
 const formattedMonth = computed(() => formatMonth(props.monthDate));
 
@@ -93,12 +92,7 @@ function isExpanded(base) {
           </div>
           <div class="text-gray-700 flex items-center gap-2">
             <span>{{
-              props.currencySymbol
-                ? formatAmount(g.sum, {
-                    code: props.currency,
-                    symbolOverride: props.currencySymbol,
-                  })
-                : formatCurrency(g.sum, props.currency)
+              formatAmount(g.sum, { symbolOverride: props.currencySymbol })
             }}</span>
             <svg
               :class="isExpanded(g.base) ? 'rotate-180' : ''"
@@ -138,12 +132,9 @@ function isExpanded(base) {
               </div>
               <div class="text-sm text-gray-800">
                 {{
-                  props.currencySymbol
-                    ? formatAmount(e.cost, {
-                        code: props.currency,
-                        symbolOverride: props.currencySymbol,
-                      })
-                    : formatCurrency(e.cost, props.currency)
+                  formatAmount(Number(e.cost ?? 0), {
+                    symbolOverride: props.currencySymbol,
+                  })
                 }}
               </div>
             </li>
@@ -158,14 +149,7 @@ function isExpanded(base) {
     <div class="mt-6 flex items-center justify-between text-gray-800">
       <div class="font-semibold">Total</div>
       <div class="font-semibold">
-        {{
-          props.currencySymbol
-            ? formatAmount(grandTotal, {
-                code: props.currency,
-                symbolOverride: props.currencySymbol,
-              })
-            : formatCurrency(grandTotal, props.currency)
-        }}
+        {{ formatAmount(grandTotal, { symbolOverride: props.currencySymbol }) }}
       </div>
     </div>
   </div>

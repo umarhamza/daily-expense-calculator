@@ -8,13 +8,11 @@ const props = defineProps({ userId: { type: String, required: true } });
 
 const isLoading = ref(true);
 const displayName = ref("");
-const currency = ref("USD");
 const currencySymbol = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
 
-const currencyOptions = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD"];
-const symbolQuickPicks = ["$", "€", "£", "¥", "D"];
+// currency dropdown and quick picks removed per @0008 plan
 
 async function loadProfile() {
   if (!props.userId) {
@@ -28,8 +26,6 @@ async function loadProfile() {
     return;
   }
   displayName.value = data?.display_name ?? "";
-  currency.value =
-    data?.currency && data.currency.length === 3 ? data.currency : "USD";
   currencySymbol.value =
     typeof data?.currency_symbol === "string" ? data.currency_symbol : "";
   isLoading.value = false;
@@ -81,31 +77,28 @@ async function savePassword() {
   });
 }
 
-async function saveCurrency() {
-  if (!currencyOptions.includes(currency.value)) {
-    showErrorToast("Invalid currency");
-    return;
-  }
+async function saveSymbol() {
   const symbol = currencySymbol.value.trim();
   if (symbol && (symbol.length < 1 || symbol.length > 4)) {
     showErrorToast("Symbol must be 1–4 characters");
     return;
   }
-  const payload = { currency: currency.value, currency_symbol: symbol || null };
-  const { error } = await updateProfile(props.userId, payload);
+  const { error } = await updateProfile(props.userId, {
+    currency_symbol: symbol || null,
+  });
   if (error) {
     showErrorToast(error.message);
     return;
   }
   try {
-    localStorage.setItem("currency", currency.value);
+    localStorage.removeItem("currency");
   } catch (_) {}
   try {
     symbol
       ? localStorage.setItem("currency_symbol", symbol)
       : localStorage.removeItem("currency_symbol");
   } catch (_) {}
-  addToast({ type: "success", title: "Saved", message: "Currency updated" });
+  addToast({ type: "success", title: "Saved", message: "Symbol updated" });
 }
 
 onMounted(loadProfile);
@@ -150,35 +143,14 @@ onMounted(loadProfile);
 
         <div class="mb-4">
           <div class="font-weight-medium mb-2">Preferences</div>
-          <v-select
-            :items="currencyOptions"
-            v-model="currency"
-            label="Currency"
+          <v-text-field
+            v-model="currencySymbol"
+            label="Currency symbol (optional)"
+            placeholder="$ or D"
+            hint="Use a custom symbol like D; leave blank for none"
+            persistent-hint
           />
-          <div class="mt-2">
-            <v-text-field
-              v-model="currencySymbol"
-              label="Display symbol (optional)"
-              placeholder="$ or D"
-              hint="Use a custom symbol like D; leave blank to use ISO symbol"
-              persistent-hint
-            />
-            <div class="mt-1 d-flex align-center" style="gap: 8px">
-              <span class="text-caption block">Quick picks:</span>
-              <v-btn
-                size="x-small"
-                variant="tonal"
-                v-for="s in symbolQuickPicks"
-                :key="s"
-                @click="currencySymbol = s"
-                >{{ s }}</v-btn
-              >
-              <v-btn size="x-small" variant="text" @click="currencySymbol = ''"
-                >Clear</v-btn
-              >
-            </div>
-          </div>
-          <v-btn color="primary" @click="saveCurrency">Save</v-btn>
+          <v-btn color="primary" @click="saveSymbol">Save</v-btn>
         </div>
 
         <v-divider class="my-4" />
