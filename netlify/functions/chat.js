@@ -32,6 +32,9 @@ export async function handler(event) {
 		// 0) Confirmation commit path (ADD | MODIFY | DELETE)
 		if (confirm && confirm.type) {
 			const t = String(confirm.type || '').toUpperCase()
+			// Verify proposal token before committing
+			const valid = await verifyProposalToken(supabase, confirm)
+			if (!valid) return jsonRes(200, { answer: 'Confirmation expired or invalid. Please try again.' })
 			if (t === 'ADD') {
 				const res = await commitAddProposal(supabase, confirm.payload)
 				if (!res.ok) return jsonRes(200, { answer: res.message || 'Sorry, I could not save that.' })
@@ -52,8 +55,8 @@ export async function handler(event) {
 
 		// 2) Route by intent
 		if (intent === 'ADD') {
-			const proposal = await buildAddProposalFromNaturalText(apiKey, { dateIso, history: chatHistory, latest: question })
-			if (proposal.ok) return jsonRes(200, { answer: proposal.summary, confirmationRequired: true, proposal: { type: 'ADD', date: proposal.date, items: proposal.items } })
+			const proposal = await buildAddProposalFromNaturalText(apiKey, supabase, { dateIso, history: chatHistory, latest: question })
+			if (proposal.ok) return jsonRes(200, { answer: proposal.summary, confirmationRequired: true, proposal: { type: 'ADD', date: proposal.date, items: proposal.items, token: proposal.token } })
 			return jsonRes(200, { answer: 'I couldn\'t understand the items. Try: “add bread 3 at 12 each, eggs 2 at 15 each”.', attemptedAdd: true })
 		}
 
@@ -599,6 +602,7 @@ function sanitizeHistory(input) {
 	const cleaned = arr
 		.map(x => ({ role: String(x?.role || '').toLowerCase(), content: String(x?.content || '').trim() }))
 		.filter(x => (x.role === 'user' || x.role === 'assistant') && x.content)
+	// Keep chronological order; last N
 	return cleaned.slice(-20)
 }
 
@@ -654,7 +658,7 @@ async function detectIntentWithContext(apiKey, ctx) {
 	}
 }
 
-async function buildAddProposalFromNaturalText(apiKey, ctx) {
+async function buildAddProposalFromNaturalText(apiKey, supabase, ctx) {
 	const schema = [
 		'{',
 		'  "items": [',
@@ -694,11 +698,22 @@ async function buildAddProposalFromNaturalText(apiKey, ctx) {
 	const parts = rows.map(r => `${r.item}${r.quantity && r.quantity > 1 ? ` ×${r.quantity}` : ''} (${Number.isFinite(r.cost) ? String(r.cost) : '0'})`)
 	const when = isoDate === toISO(new Date()) ? 'today' : isoDate
 	const summary = `Add: ${parts.join(', ')} for ${when}. Confirm?`
-	return { ok: true, date: isoDate, items: rows, summary }
+	// Attach confirmation token bound to user and proposal payload
+	const { data: userData } = await supabase.auth.getUser()
+	const userId = userData?.user?.id || ''
+	const proposal = { type: 'ADD', date: isoDate, items: rows }
+	const token = await createProposalToken(userId, proposal)
+	return { ok: true, date: isoDate, items: rows, summary, token }
 }
 
 async function commitAddProposal(supabase, payload) {
 	if (!payload || !Array.isArray(payload.items) || !payload.items.length || !payload.date) return { ok: false, message: 'Missing items to add.' }
+	// Validate fields
+	for (const it of payload.items) {
+		if (!it || !String(it.item || '').trim()) return { ok: false, message: 'Item name is required.' }
+		if (it.quantity != null && (!Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0)) return { ok: false, message: 'Invalid quantity.' }
+		if (it.cost != null && !Number.isFinite(Number(it.cost))) return { ok: false, message: 'Invalid cost.' }
+	}
 	// Resolve authenticated user
 	const { data: userData, error: userErr } = await supabase.auth.getUser()
 	if (userErr || !userData?.user?.id) return { ok: false, message: 'Sorry, I could not verify your account.' }
@@ -765,11 +780,19 @@ async function buildModifyProposal(apiKey, supabase, ctx) {
 	if (update.quantity != null) parts.push(`quantity → ${update.quantity}`)
 	if (update.date) parts.push(`date → ${update.date}`)
 	const summary = `Edit ${target.item} on ${target.date}: ${parts.join(', ')}. Confirm?`
-	return { answer: summary, confirmationRequired: true, proposal: { type: 'MODIFY', id: target.id, update } }
+	const { data: userData2 } = await supabase.auth.getUser()
+	const userId2 = userData2?.user?.id || ''
+	const proposal = { type: 'MODIFY', id: target.id, update }
+	const token = await createProposalToken(userId2, proposal)
+	return { answer: summary, confirmationRequired: true, proposal: { ...proposal, token } }
 }
 
 async function commitModifyProposal(supabase, payload) {
 	if (!payload || !payload.id || !payload.update) return { answer: 'Missing update details.' }
+	// Validate update fields
+	if (payload.update.item != null && !String(payload.update.item || '').trim()) return { answer: 'Invalid item.' }
+	if (payload.update.cost != null && !Number.isFinite(Number(payload.update.cost))) return { answer: 'Invalid cost.' }
+	if (payload.update.quantity != null && (!Number.isFinite(Number(payload.update.quantity)) || Number(payload.update.quantity) <= 0)) return { answer: 'Invalid quantity.' }
 	// Resolve authenticated user
 	const { data: userData, error: userErr } = await supabase.auth.getUser()
 	if (userErr || !userData?.user?.id) return { answer: 'Sorry, I could not verify your account.' }
@@ -816,7 +839,11 @@ async function buildDeleteProposal(apiKey, supabase, ctx) {
 	if (data.length > 1) return { answer: `I found ${data.length} matches. Please be more specific.` }
 	const target = data[0]
 	const summary = `Delete ${target.item} (${Number.isFinite(target.cost) ? String(target.cost) : '0'}) on ${target.date}? Confirm?`
-	return { answer: summary, confirmationRequired: true, proposal: { type: 'DELETE', id: target.id } }
+	const { data: userData2 } = await supabase.auth.getUser()
+	const userId2 = userData2?.user?.id || ''
+	const proposal = { type: 'DELETE', id: target.id }
+	const token = await createProposalToken(userId2, proposal)
+	return { answer: summary, confirmationRequired: true, proposal: { ...proposal, token } }
 }
 
 async function commitDeleteProposal(supabase, payload) {
@@ -831,4 +858,37 @@ async function commitDeleteProposal(supabase, payload) {
 		.match({ id: payload.id, user_id: userId })
 	if (error) return { answer: 'Sorry, I could not delete that.' }
 	return { answer: 'Deleted.', deleted: { id: payload.id } }
+}
+
+// --- Proposal token helpers ---
+
+/**
+ * Creates an HMAC token bound to the user and proposal payload to prevent forged/stale confirmations.
+ */
+async function createProposalToken(userId, proposal) {
+  const secret = process.env.PROPOSAL_TOKEN_SECRET || process.env.GEMINI_API_KEY || 'fallback'
+  const data = `${userId}|${JSON.stringify(proposal)}`
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data))
+  const b = Buffer.from(sig).toString('base64url')
+  return b
+}
+
+/**
+ * Verifies that the confirmation carries a valid token for the current user and payload.
+ */
+async function verifyProposalToken(supabase, confirm) {
+  try {
+    if (!confirm || !confirm.type || !confirm.payload || !confirm.payload.token) return false
+    const { data: userData } = await supabase.auth.getUser()
+    const userId = userData?.user?.id || ''
+    const payloadCopy = { ...confirm.payload }
+    const token = String(payloadCopy.token)
+    delete payloadCopy.token
+    const expected = await createProposalToken(userId, { type: confirm.type, ...payloadCopy })
+    return token === expected
+  } catch {
+    return false
+  }
 }
