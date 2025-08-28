@@ -26,6 +26,13 @@ function onCostInput(val) {
 	cost.value = normalizeCostString(val)
 }
 
+function onQuantityInput(val) {
+	const raw = String(val ?? '')
+	const parsed = Number.parseInt(raw, 10)
+	const coerced = Number.isFinite(parsed) ? parsed : 1
+	quantity.value = coerced < 1 ? 1 : coerced
+}
+
 const isValid = computed(() => {
   const qn = Number.parseInt(quantity.value, 10)
   return !!item.value && cost.value.trim() !== '' && !Number.isNaN(Number.parseFloat(cost.value)) && Number.isFinite(qn) && qn > 0
@@ -73,6 +80,7 @@ function handleSave() {
 					step="1"
 					variant="outlined"
 					hide-details="auto"
+					@update:model-value="onQuantityInput"
 					class="mt-3"
 				/>
 				<v-text-field
