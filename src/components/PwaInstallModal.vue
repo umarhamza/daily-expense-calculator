@@ -1,8 +1,8 @@
 <template>
-  <v-dialog v-model="isOpen" max-width="520" aria-label="PWA install instructions">
+  <v-dialog v-model="isOpen" max-width="520" aria-label="PWA install instructions" :aria-labelledby="titleId">
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
-        <span>PWA Installation</span>
+        <span :id="titleId">PWA Installation</span>
         <v-btn icon="mdi-close" variant="text" @click="close" aria-label="Close" />
       </v-card-title>
       <v-card-text>
@@ -87,6 +87,8 @@ const isOpen = computed({
   get() { return props.modelValue },
   set(v) { emit('update:modelValue', v) }
 })
+
+const titleId = `pwa-install-title`
 
 const platform = ref(detectPlatform())
 watchEffect(() => { platform.value = detectPlatform() })
