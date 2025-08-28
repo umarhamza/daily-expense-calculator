@@ -9,6 +9,7 @@ const mode = ref("signin");
 const isLoading = ref(false);
 const errorMessage = ref("");
 const infoMessage = ref("");
+const showPassword = ref(false);
 
 async function handleSubmit() {
   errorMessage.value = "";
@@ -45,63 +46,77 @@ async function handleSubmit() {
 
 <template>
   <div class="min-h-screen grid place-items-center">
-    <form
-      class="w-full max-w-sm bg-white p-6 rounded-lg shadow"
-      @submit.prevent="handleSubmit"
-    >
-      <h1 class="text-xl font-semibold mb-4">
-        {{ mode === "signin" ? "Sign In" : "Sign Up" }}
-      </h1>
-
-      <div class="space-y-3">
-        <input
-          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          type="email"
-          placeholder="Email"
-          v-model="email"
-          required
-        />
-        <input
-          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          type="password"
-          placeholder="Password"
-          v-model="password"
-          required
-        />
-      </div>
-
-      <div v-if="errorMessage" class="mt-3 text-sm text-red-600">
-        {{ errorMessage }}
-      </div>
-      <div v-if="infoMessage" class="mt-3 text-sm text-green-600">
-        {{ infoMessage }}
-      </div>
-
-      <button
-        class="w-full bg-blue-600 text-white font-medium py-2 rounded-md mt-4 disabled:opacity-50"
-        :disabled="isLoading"
-        type="submit"
-      >
-        {{
-          isLoading
-            ? "Please wait..."
-            : mode === "signin"
-            ? "Sign In"
-            : "Create Account"
-        }}
-      </button>
-
-      <button
-        type="button"
-        class="w-full text-sm text-blue-600 mt-3"
-        @click="mode = mode === 'signin' ? 'signup' : 'signin'"
-      >
-        {{
-          mode === "signin"
-            ? "Need an account? Sign up"
-            : "Have an account? Sign in"
-        }}
-      </button>
+    <form class="w-full max-w-sm" @submit.prevent="handleSubmit">
+      <v-card>
+        <v-card-title class="text-h6">
+          {{ mode === "signin" ? "Sign In" : "Sign Up" }}
+        </v-card-title>
+        <v-card-subtitle>
+          {{ mode === "signin" ? "Welcome back" : "Create your account" }}
+        </v-card-subtitle>
+        <v-card-text>
+          <div class="space-y-3">
+            <v-text-field
+              v-model="email"
+              label="Email"
+              type="email"
+              autocomplete="email"
+              prepend-inner-icon="mdi-email"
+              required
+            />
+            <v-text-field
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              label="Password"
+              autocomplete="current-password"
+              :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+              @click:append-inner="showPassword = !showPassword"
+              required
+            />
+            <v-alert
+              v-if="errorMessage"
+              type="error"
+              variant="tonal"
+              density="comfortable"
+              aria-live="polite"
+            >
+              {{ errorMessage }}
+            </v-alert>
+            <v-alert
+              v-if="infoMessage"
+              type="info"
+              variant="tonal"
+              density="comfortable"
+              aria-live="polite"
+            >
+              {{ infoMessage }}
+            </v-alert>
+          </div>
+        </v-card-text>
+        <v-card-actions class="flex flex-col gap-2">
+          <v-btn
+            color="primary"
+            type="submit"
+            :loading="isLoading"
+            :disabled="isLoading"
+            block
+          >
+            {{ mode === "signin" ? "Sign In" : "Create Account" }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            type="button"
+            @click="mode = mode === 'signin' ? 'signup' : 'signin'"
+            block
+          >
+            {{
+              mode === "signin"
+                ? "Need an account? Sign up"
+                : "Have an account? Sign in"
+            }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
     </form>
   </div>
 </template>

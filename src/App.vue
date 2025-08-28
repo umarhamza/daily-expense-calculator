@@ -145,7 +145,7 @@ async function logout() {
     >
       <v-progress-circular indeterminate color="primary" size="48" />
     </div>
-    <div v-if="!session" v-show="isAppReady" class="min-h-screen">
+    <div v-if="!session" v-show="isAppReady" class="min-h-screen bg-gray-50">
       <AuthForm />
     </div>
     <div
