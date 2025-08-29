@@ -22,3 +22,11 @@ Use the create_brief.md file to create a new brief file based on this project.
 --------------
 
 write_docs.md
+
+---------------
+
+we need a plan.md file for refactoring
+
+we need a plan.md file for creating a project brief for an existing project
+
+we need a plan.md file for explaining the structure of a backend or frontend project
