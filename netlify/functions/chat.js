@@ -682,10 +682,8 @@ async function answerSpendQuestion(supabase, question) {
 			const key = String(row?.item || '').toLowerCase().trim()
 			if (!key) continue
 			const cost = Number.parseFloat(row?.cost)
-			const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 1
-			const rowTotal = Number.isFinite(cost) ? cost : (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0)
 			const prev = totals.get(key) || 0
-			totals.set(key, prev + (Number.isFinite(rowTotal) ? rowTotal : 0))
+			totals.set(key, prev + (Number.isFinite(cost) ? cost : 0))
 		}
 		const arr = Array.from(totals.entries()).map(([item, total]) => ({ item, total })).sort((a,b)=>b.total-a.total).slice(0,5)
 		if (!arr.length) return `No expenses found ${label}.`
