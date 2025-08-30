@@ -10,7 +10,7 @@ import Composer from "./chat/Composer.vue";
 const emit = defineEmits(["added"]);
 
 const messages = ref([
-  { role: "assistant", content: "Ask me about your spend." },
+  { role: "assistant", content: "I’m your expense tracker. Ask me to add an expense, total your coffee spend this month, or compare this week vs last week." },
 ]);
 const input = ref("");
 const isSending = ref(false);
@@ -55,7 +55,7 @@ function buildHistoryPayload() {
 }
 
 function resetChat() {
-  messages.value = [{ role: "assistant", content: "Ask me about your spend." }];
+  messages.value = [{ role: "assistant", content: "I’m your expense tracker. Ask me to add an expense, total your coffee spend this month, or compare this week vs last week." }];
   input.value = "";
   errorMessage.value = "";
   pendingProposal.value = null;
@@ -234,7 +234,7 @@ async function loadMessages(id) {
     const res = await listMessages(userId, id, 100);
     if (!res.error) {
       messages.value = (res.data || []).map(m => ({ role: m.role, content: m.content }));
-      if (messages.value.length === 0) messages.value = [{ role: "assistant", content: "Ask me about your spend." }];
+      if (messages.value.length === 0) messages.value = [{ role: "assistant", content: "I’m your expense tracker. Ask me to add an expense, total your coffee spend this month, or compare this week vs last week." }];
     }
   } finally {
     isLoadingMessages.value = false;

@@ -9,7 +9,7 @@ import IconStop from './icons/IconStop.vue'
 const emit = defineEmits(['close', 'added'])
 const props = defineProps({ isOpen: { type: Boolean, default: false } })
 
-const messages = ref([{ role: 'assistant', content: 'Ask me about your spend.' }])
+const messages = ref([{ role: 'assistant', content: 'I’m your expense tracker. Ask me to add an expense, total your coffee spend this month, or compare this week vs last week.' }])
 const input = ref('')
 const isSending = ref(false)
 const errorMessage = ref('')
@@ -40,7 +40,7 @@ function buildHistoryPayload() {
 }
 
 function resetChat() {
-  messages.value = [{ role: 'assistant', content: 'Ask me about your spend.' }]
+  messages.value = [{ role: 'assistant', content: 'I’m your expense tracker. Ask me to add an expense, total your coffee spend this month, or compare this week vs last week.' }]
   input.value = ''
   errorMessage.value = ''
   pendingProposal.value = null
