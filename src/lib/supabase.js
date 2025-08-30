@@ -228,3 +228,86 @@ export async function listMessages(userId, chatId, limit = 50) {
     .limit(limit)
   return { data: data ?? [], error }
 }
+
+/**
+ * Compute total spend for a specific item over an optional date range.
+ * Inputs: userId string, item string, startDate? YYYY-MM-DD, endDate? YYYY-MM-DD
+ * Returns: { data: { total: number }, error }
+ */
+export async function getTotalForItem(userId, item, startDate, endDate) {
+  if (!userId) return { data: { total: 0 }, error: new Error('Missing userId') }
+  const name = String(item || '').trim().toLowerCase()
+  if (!name) return { data: { total: 0 }, error: new Error('Missing item') }
+  const hasStart = typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+  const hasEnd = typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+  let query = supabase
+    .from('expenses')
+    .select('item,cost,date')
+    .eq('user_id', userId)
+    .ilike('item', name)
+  if (hasStart) query = query.gte('date', startDate)
+  if (hasEnd) query = query.lte('date', endDate)
+  const { data, error } = await query
+  if (error) return { data: { total: 0 }, error }
+  const total = (data || []).reduce((sum, row) => {
+    const cost = Number.parseFloat(row?.cost)
+    return sum + (Number.isFinite(cost) ? cost : 0)
+  }, 0)
+  return { data: { total }, error: null }
+}
+
+/**
+ * Compute total spend for a date window.
+ * Inputs: userId string, startDate YYYY-MM-DD, endDate YYYY-MM-DD
+ * Returns: { data: { total: number }, error }
+ */
+export async function getTotalForPeriod(userId, startDate, endDate) {
+  if (!userId) return { data: { total: 0 }, error: new Error('Missing userId') }
+  const hasStart = typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+  const hasEnd = typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+  if (!hasStart || !hasEnd) return { data: { total: 0 }, error: new Error('Invalid date range') }
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('cost')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+  if (error) return { data: { total: 0 }, error }
+  const total = (data || []).reduce((sum, row) => {
+    const cost = Number.parseFloat(row?.cost)
+    return sum + (Number.isFinite(cost) ? cost : 0)
+  }, 0)
+  return { data: { total }, error: null }
+}
+
+/**
+ * Return top items by spend for an optional date range.
+ * Inputs: userId string, startDate? YYYY-MM-DD, endDate? YYYY-MM-DD, limit number (default 5)
+ * Returns: { data: Array<{ item: string, total: number }>, error }
+ */
+export async function getTopItems(userId, startDate, endDate, limit = 5) {
+  if (!userId) return { data: [], error: new Error('Missing userId') }
+  const hasStart = typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+  const hasEnd = typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+  let query = supabase
+    .from('expenses')
+    .select('item,cost,quantity,date')
+    .eq('user_id', userId)
+  if (hasStart) query = query.gte('date', startDate)
+  if (hasEnd) query = query.lte('date', endDate)
+  const { data, error } = await query
+  if (error) return { data: [], error }
+  const totals = new Map()
+  for (const row of data || []) {
+    const key = String(row?.item || '').toLowerCase().trim()
+    if (!key) continue
+    const cost = Number.parseFloat(row?.cost)
+    const prev = totals.get(key) || 0
+    totals.set(key, prev + (Number.isFinite(cost) ? cost : 0))
+  }
+  const arr = Array.from(totals.entries())
+    .map(([item, total]) => ({ item, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, Math.max(1, Number(limit) || 5))
+  return { data: arr, error: null }
+}
