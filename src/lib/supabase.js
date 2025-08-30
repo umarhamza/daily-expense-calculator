@@ -242,7 +242,7 @@ export async function getTotalForItem(userId, item, startDate, endDate) {
   const hasEnd = typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
   let query = supabase
     .from('expenses')
-    .select('item,cost,quantity,date')
+    .select('item,cost,date')
     .eq('user_id', userId)
     .ilike('item', name)
   if (hasStart) query = query.gte('date', startDate)
@@ -251,9 +251,7 @@ export async function getTotalForItem(userId, item, startDate, endDate) {
   if (error) return { data: { total: 0 }, error }
   const total = (data || []).reduce((sum, row) => {
     const cost = Number.parseFloat(row?.cost)
-    const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 1
-    const rowTotal = Number.isFinite(cost) ? cost : (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0)
-    return sum + (Number.isFinite(rowTotal) ? rowTotal : 0)
+    return sum + (Number.isFinite(cost) ? cost : 0)
   }, 0)
   return { data: { total }, error: null }
 }
@@ -270,16 +268,14 @@ export async function getTotalForPeriod(userId, startDate, endDate) {
   if (!hasStart || !hasEnd) return { data: { total: 0 }, error: new Error('Invalid date range') }
   const { data, error } = await supabase
     .from('expenses')
-    .select('cost,quantity')
+    .select('cost')
     .eq('user_id', userId)
     .gte('date', startDate)
     .lte('date', endDate)
   if (error) return { data: { total: 0 }, error }
   const total = (data || []).reduce((sum, row) => {
     const cost = Number.parseFloat(row?.cost)
-    const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 1
-    const rowTotal = Number.isFinite(cost) ? cost : (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0)
-    return sum + (Number.isFinite(rowTotal) ? rowTotal : 0)
+    return sum + (Number.isFinite(cost) ? cost : 0)
   }, 0)
   return { data: { total }, error: null }
 }
@@ -306,10 +302,8 @@ export async function getTopItems(userId, startDate, endDate, limit = 5) {
     const key = String(row?.item || '').toLowerCase().trim()
     if (!key) continue
     const cost = Number.parseFloat(row?.cost)
-    const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 1
-    const rowTotal = Number.isFinite(cost) ? cost : (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0)
     const prev = totals.get(key) || 0
-    totals.set(key, prev + (Number.isFinite(rowTotal) ? rowTotal : 0))
+    totals.set(key, prev + (Number.isFinite(cost) ? cost : 0))
   }
   const arr = Array.from(totals.entries())
     .map(([item, total]) => ({ item, total }))
