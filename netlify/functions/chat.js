@@ -603,10 +603,29 @@ function getBaseItemName(item) {
 	return (m ? m[1] : s).trim()
 }
 
-function formatDalasi(amount) {
+async function getCurrencySymbol(supabase) {
+	try {
+		const { data: userData } = await supabase.auth.getUser()
+		const userId = userData?.user?.id
+		if (!userId) return ''
+		const { data } = await supabase
+			.from('profiles')
+			.select('currency_symbol')
+			.eq('user_id', userId)
+			.maybeSingle()
+		const sym = String(data?.currency_symbol || '').trim()
+		return sym
+	} catch {
+		return ''
+	}
+}
+
+function formatAmount(amount, currencySymbol) {
 	const isInt = Number.isInteger(amount)
 	const nf = new Intl.NumberFormat('en-US', { minimumFractionDigits: isInt ? 0 : 2, maximumFractionDigits: isInt ? 0 : 2 })
-	return `D${nf.format(amount)}`
+	const num = nf.format(amount)
+	const sym = String(currencySymbol || '').trim()
+	return sym ? `${sym}${num}` : num
 }
 
 /**
@@ -644,7 +663,34 @@ async function answerSpendQuestion(supabase, question) {
 		const diff = tThis - tLast
 		const abs = Math.abs(diff)
 		const sign = diff > 0 ? '+' : (diff < 0 ? '-' : '')
-		return `${formatDalasi(tThis)} this week vs ${formatDalasi(tLast)} last week (${sign}${formatDalasi(abs).slice(1)}).`
+		return `${formatAmount(tThis, currencySymbol)} this week vs ${formatAmount(tLast, currencySymbol)} last week (${sign}${formatAmount(abs, currencySymbol)}).`
+	}
+
+	// Top items / breakdown summary for a period
+	if (/\b(top|summary|breakdown|biggest|largest)\b/i.test(question)) {
+		const { from, to, label } = parseSpendQuery(question)
+		let q = supabase
+			.from('expenses')
+			.select('item,cost,quantity,date')
+			.eq('user_id', userId)
+			.gte('date', from)
+			.lte('date', to)
+		const { data, error } = await q
+		if (error) return 'Sorry, I could not fetch your expenses.'
+		const totals = new Map()
+		for (const row of data || []) {
+			const key = String(row?.item || '').toLowerCase().trim()
+			if (!key) continue
+			const cost = Number.parseFloat(row?.cost)
+			const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 1
+			const rowTotal = Number.isFinite(cost) ? cost : (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0)
+			const prev = totals.get(key) || 0
+			totals.set(key, prev + (Number.isFinite(rowTotal) ? rowTotal : 0))
+		}
+		const arr = Array.from(totals.entries()).map(([item, total]) => ({ item, total })).sort((a,b)=>b.total-a.total).slice(0,5)
+		if (!arr.length) return `No expenses found ${label}.`
+		const line = arr.map(x => `${x.item}: ${formatAmount(x.total, currencySymbol)}`).join(', ')
+		return `${line} ${label}. Want totals for a specific item?`
 	}
 
 	const { from, to, label, item } = parseSpendQuery(question)
@@ -674,9 +720,11 @@ async function answerSpendQuestion(supabase, question) {
 		return sum + (Number.isFinite(v) ? v : 0)
 	}, 0)
 
-	const amount = formatDalasi(total)
+	const amount = formatAmount(total, currencySymbol)
 	const suffix = baseFilter ? ` on ${baseFilter} ${label}.` : ` ${label}.`
-	return `${amount}${suffix}`
+	const explicitTime = /(today|yesterday|this week|this month|between\s+\d{4}-\d{2}-\d{2}\s+(?:and|to|-)+\s+\d{4}-\d{2}-\d{2})/i.test(question)
+	const assumed = explicitTime ? '' : ' Assuming last 30 days.'
+	return `${amount}${suffix}${assumed} Want to see top items?`.trim()
 }
 
 // ---- Context-aware helpers and proposal/confirmation flows ----
@@ -692,11 +740,10 @@ function sanitizeHistory(input) {
 
 function buildSystemInstructions() {
 	return [
-		'You are the Expense Tracker Assistant for a Daily Expense Tracker web app.',
-		'Only answer questions related to tracking expenses. If unrelated, briefly say you only handle expenses.',
-		'Be concise and user-friendly. Do not invent data; use only provided chat history, current date, and backend context.',
-		'When adding, modifying, or deleting, ask for user confirmation before saving.',
-		'If asked "how do I use this?", explain briefly how to add, modify, delete, and query expenses.',
+		'You are a daily expense tracker assistant. Stay within tracking and reporting expenses. Be concise, friendly, and conversational.',
+		'Ask the user to confirm before you add, modify, or delete any expense.',
+		'For questions, answer directly with totals and short context. Use only chat history, current date, and backend context. Do not invent data.',
+		'If the user asks outside scope, briefly redirect to expense tracking.',
 	].join('\n')
 }
 
