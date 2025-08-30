@@ -13,6 +13,8 @@ const emit = defineEmits(["update:modelValue", "send", "stop", "toggleStt"]);
 const textarea = ref(null);
 
 function handleKeydown(e) {
+  // Respect IME composition
+  if (e.isComposing) return;
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     emit('send');
@@ -43,6 +45,7 @@ onMounted(autoResize);
         rows="1"
         @input="$emit('update:modelValue', $event.target.value)"
         @keydown="handleKeydown"
+        aria-label="Message composer"
       />
       <button
         v-if="sttSupported"
@@ -59,6 +62,7 @@ onMounted(autoResize);
         class="px-3 py-2 rounded-md bg-blue-600 text-white disabled:opacity-50"
         :disabled="isSending || !modelValue.trim()"
         @click="$emit('send')"
+        aria-label="Send message"
       >
         Send
       </button>

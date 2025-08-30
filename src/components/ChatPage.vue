@@ -17,6 +17,7 @@ const isSending = ref(false);
 const errorMessage = ref("");
 const pendingProposal = ref(null);
 const pendingAssistantIndex = ref(-1);
+const abortController = ref(null);
 
 const chatId = ref(null);
 const chats = ref([]);
@@ -78,6 +79,7 @@ async function sendMessage() {
   pendingAssistantIndex.value = pendingIndex;
 
   try {
+    abortController.value = new AbortController();
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) throw new Error("Not authenticated");
@@ -89,6 +91,7 @@ async function sendMessage() {
         authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ question: q, history: buildHistoryPayload(), chatId: chatId.value, title: chatId.value ? undefined : q.slice(0, 60) }),
+      signal: abortController.value.signal,
     });
 
     const json = await res.json().catch(() => ({}));
@@ -130,13 +133,15 @@ async function sendMessage() {
     try { if (chatId.value) await loadMessages(chatId.value); } catch (_) {}
     return;
   } catch (err) {
+    const wasAborted = err && (err.name === 'AbortError' || /aborted|abort/i.test(String(err.message || '')));
     messages.value[pendingIndex] = {
       role: "assistant",
-      content: "Sorry, I had trouble answering that.",
+      content: wasAborted ? "Stopped." : "Sorry, I had trouble answering that.",
     };
-    errorMessage.value = err?.message || "Something went wrong";
+    if (!wasAborted) errorMessage.value = err?.message || "Something went wrong";
   } finally {
     isSending.value = false;
+    abortController.value = null;
   }
 }
 
@@ -201,6 +206,10 @@ function cancelProposal() {
     messages.value.push({ role: "assistant", content: "Okay, cancelled." });
   }
   pendingAssistantIndex.value = -1;
+}
+
+function stopSending() {
+  try { abortController.value && abortController.value.abort(); } catch (_) {}
 }
 
 async function loadChats() {
@@ -304,7 +313,7 @@ onMounted(async () => {
         :stt-supported="isSttSupported"
         @update:modelValue="(v) => (input = v)"
         @send="sendMessage"
-        @stop="() => {}"
+        @stop="stopSending"
         @toggleStt="isListening ? stopStt() : startStt()"
       />
     </main>
