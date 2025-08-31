@@ -73,7 +73,7 @@ onBeforeUnmount(() => {
     </div>
     <button
       v-if="!isAtBottom"
-      class="absolute right-3 bottom-3 px-3 py-1.5 rounded-full text-sm bg-neutral-800 text-white shadow-md dark:bg-neutral-200 dark:text-neutral-900"
+      class="absolute right-3 bottom-3 px-3 py-1.5 rounded-full text-sm bg-neutral-800 text-white shadow-md"
       @click="jumpToLatest"
       aria-label="Jump to latest messages"
     >

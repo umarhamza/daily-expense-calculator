@@ -637,6 +637,9 @@ async function answerSpendQuestion(supabase, question) {
 	if (userErr || !userData?.user?.id) return 'Sorry, I could not verify your account.'
 	const userId = userData.user.id
 
+	// Resolve user's preferred currency symbol once for formatting
+	const currencySymbol = await getCurrencySymbol(supabase)
+
 	// Quick comparison support: this week vs last week
 	if (/this\s+week\s+vs\s+last\s+week|last\s+week\s+vs\s+this\s+week/i.test(question)) {
 		const totalForRange = async (from, to, itemFilter) => {

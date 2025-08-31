@@ -46,7 +46,7 @@ async function copyContent() {
       :class="[
         isUser
           ? 'bg-blue-600 text-white rounded-br-sm'
-          : 'bg-white text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100 border rounded-bl-sm',
+          : 'bg-white text-neutral-900 border rounded-bl-sm',
         error ? 'border-red-300 text-red-700 bg-red-50' : ''
       ]"
     >
@@ -54,7 +54,7 @@ async function copyContent() {
       <span v-if="isStreaming && !isUser" class="inline-block w-1 h-4 ml-1 align-baseline bg-neutral-400 animate-pulse"></span>
       <button
         v-if="!isUser"
-        class="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-xs px-2 py-0.5 rounded border border-neutral-300 text-neutral-700 dark:text-neutral-200 dark:border-neutral-600"
+        class="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-xs px-2 py-0.5 rounded border border-neutral-300 text-neutral-700"
         :disabled="isCopying"
         @click="copyContent"
         aria-label="Copy message"
