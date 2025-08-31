@@ -34,11 +34,11 @@ onMounted(autoResize);
 </script>
 
 <template>
-  <div class="sticky bottom-0 z-10 border-t bg-neutral-50/80 dark:bg-neutral-900/80 backdrop-blur px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+  <div class="sticky bottom-0 z-10 border-t bg-neutral-50/80 backdrop-blur px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
     <div class="flex gap-2 items-end">
       <textarea
         ref="textarea"
-        class="flex-1 resize-none rounded-xl border px-3 py-2 text-sm bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="flex-1 resize-none rounded-xl border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         :value="modelValue"
         :placeholder="props.isSending ? 'Sending…' : 'Send a message'"
         :disabled="isSending"

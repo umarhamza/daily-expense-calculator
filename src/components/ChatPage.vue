@@ -275,10 +275,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col h-dvh bg-neutral-50 dark:bg-neutral-900">
-    <header class="sticky top-0 z-10 border-b bg-neutral-50/80 dark:bg-neutral-900/80 backdrop-blur">
+  <div class="flex flex-col h-dvh bg-neutral-50">
+    <header class="sticky top-0 z-10 border-b bg-neutral-50/80 backdrop-blur">
       <div class="mx-auto max-w-md px-3 h-12 flex items-center justify-between">
-        <h1 class="text-sm font-medium text-neutral-700 dark:text-neutral-200 truncate">Chat</h1>
+        <h1 class="text-sm font-medium text-neutral-700 truncate">Chat</h1>
         <div class="flex items-center gap-2">
           <v-select
             v-model="chatId"
