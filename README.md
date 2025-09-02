@@ -1,31 +1,32 @@
 # Daily Expense Tracker
 
-## Development
+plan_feature.md
 
-- Install dependencies: `npm install`
-- Start dev server: `npm run dev`
+Prompt:
+Use the plan_feature.md file to create a new plan file. Add the following to the plan: <add prompt here>
 
-## Gemini Strict JSON Agent
+--------------
 
-Use `useGeminiAgent` to send a message that already contains strict JSON. The agent validates, optionally executes a whitelisted `db_query`, and always returns a final JSON string with `respond_to_user`.
+code_review.md
 
-Example input message (must be strict JSON):
+Prompt:
+Use the code_review.md file to create a new review file based on the following plan docs/features/0006_PLAN.md 
 
-```
-{"action":"db_query","query":"SELECT id, item FROM expenses WHERE active = true;"}
-```
+--------------
 
-Usage in a component:
+create_brief.md
 
-```js
-import { useGeminiAgent } from '@/lib/useGeminiAgent'
+Prompt:
+Use the create_brief.md file to create a new brief file based on this project.
 
-const { isLoading, error, send } = useGeminiAgent()
-const result = await send('{"action":"respond_to_user","content":"Hello there."}')
-// result is a JSON string like {"action":"respond_to_user","content":"Hello there."}
-```
+--------------
 
-Rules enforced:
-- Only one action per response.
-- `respond_to_user` content is max 20 words.
-- Any `db_query` is executed only if whitelisted; otherwise returns `{"action":"respond_to_user","content":"No results found."}`.
+write_docs.md
+
+---------------
+
+we need a plan.md file for refactoring
+
+we need a plan.md file for creating a project brief for an existing project
+
+we need a plan.md file for explaining the structure of a backend or frontend project
