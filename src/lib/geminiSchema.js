@@ -7,9 +7,13 @@
 export function validateGeminiAction(value) {
   const fail = (message) => ({ ok: false, error: new Error(message) })
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return fail('Payload must be a JSON object')
+  const keys = Object.keys(value)
   const action = value.action
   if (action !== 'respond_to_user' && action !== 'db_query') return fail('Invalid or missing action')
   if (action === 'respond_to_user') {
+    // Unknown fields are not allowed
+    const allowed = new Set(['action', 'content'])
+    if (keys.some(k => !allowed.has(k))) return fail('Unknown fields are not allowed')
     const content = value.content
     if (typeof content !== 'string') return fail('content must be a string')
     const words = content.trim().split(/\s+/).filter(Boolean)
@@ -18,6 +22,9 @@ export function validateGeminiAction(value) {
     return { ok: true, action, content }
   }
   if (action === 'db_query') {
+    // Unknown fields are not allowed
+    const allowed = new Set(['action', 'query'])
+    if (keys.some(k => !allowed.has(k))) return fail('Unknown fields are not allowed')
     const query = value.query
     if (typeof query !== 'string' || !query.trim()) return fail('query must be a non-empty string')
     return { ok: true, action, query }
