@@ -19,6 +19,9 @@ export async function handler(event) {
   if (!Array.isArray(history) || history.length === 0) {
     return jsonRes(400, { error: 'history (array) is required' })
   }
+  if (!isValidHistory(history)) {
+    return jsonRes(400, { error: 'Invalid history shape' })
+  }
 
   const userContext = sanitizeUserContext(body?.userContext)
   const userText = extractLastUserMessage(history)
@@ -37,7 +40,8 @@ export async function handler(event) {
         const ai2Message = await handleAi2(userText, history, userContext, service)
         return jsonRes(200, { handledBy: 'AI-2', message: ai2Message, action: 'pass_to_AI2' })
       } catch (e) {
-        return jsonRes(500, { error: 'Server error', detail: String(e?.message || e) })
+        const { status, error, detail } = mapDomainErrorToHttp(e)
+        return jsonRes(status, { error, detail })
       }
     }
 
@@ -55,6 +59,31 @@ function jsonRes(statusCode, obj) {
   }
 }
 
+function mapDomainErrorToHttp(err) {
+  const message = String(err?.message || err || '')
+  // RBAC
+  if (/insufficient permissions/i.test(message)) {
+    return { status: 403, error: 'Forbidden', detail: 'Insufficient permissions' }
+  }
+  // validation
+  if (/invalid (item|amount)/i.test(message)) {
+    return { status: 400, error: 'Invalid request', detail: message }
+  }
+  // not found
+  if (/not found/i.test(message)) {
+    return { status: 404, error: 'Not Found', detail: message }
+  }
+  // cross-tenant
+  if (/cross-tenant access denied/i.test(message)) {
+    return { status: 403, error: 'Forbidden', detail: 'Cross-tenant access denied' }
+  }
+  // delete failed or generic
+  if (/delete failed/i.test(message)) {
+    return { status: 409, error: 'Conflict', detail: message }
+  }
+  return { status: 500, error: 'Server error', detail: message }
+}
+
 /**
  * Extracts the most recent user message content from history.
  * Inputs: history: Array<{ role: 'user'|'assistant', content: string }>
@@ -66,6 +95,15 @@ function extractLastUserMessage(history) {
     if (h && h.role === 'user' && typeof h.content === 'string') return h.content
   }
   return ''
+}
+
+function isValidHistory(history) {
+  if (!Array.isArray(history)) return false
+  for (const entry of history) {
+    if (!entry || (entry.role !== 'user' && entry.role !== 'assistant')) return false
+    if (typeof entry.content !== 'string') return false
+  }
+  return true
 }
 
 /**
@@ -96,7 +134,13 @@ async function callAi1Strict(userText, history, userContext) {
 }
 
 function isValidAi1Response(v) {
-  return v && typeof v.message === 'string' && (v.action === 'none' || v.action === 'pass_to_AI2')
+  if (!v || typeof v !== 'object') return false
+  const allowed = ['message', 'action']
+  const keys = Object.keys(v)
+  if (!keys.every(k => allowed.includes(k))) return false
+  if (typeof v.message !== 'string') return false
+  if (!(v.action === 'none' || v.action === 'pass_to_AI2')) return false
+  return true
 }
 
 // ------------------- AI-2 and Expense Domain -------------------
