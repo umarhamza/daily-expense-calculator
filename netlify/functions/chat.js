@@ -35,6 +35,10 @@ export async function handler(event) {
     const confirmation = normalizeConfirm(body?.confirm)
     if (confirmation) {
       try {
+        const validation = validateToolCall(confirmation.tool, confirmation.args)
+        if (!validation.ok) {
+          return jsonRes(400, { error: 'Invalid request', detail: validation.error.message })
+        }
         const executed = await executeTool(confirmation.tool, confirmation.args, userContext, service, today)
         return jsonRes(200, executed)
       } catch (e) {
@@ -122,6 +126,10 @@ function mapDomainErrorToHttp(err) {
   if (/invalid (item|amount)/i.test(message)) {
     return { status: 400, error: 'Invalid request', detail: message }
   }
+  // unsupported or unknown tool
+  if (/(unsupported tool|unknown tool)/i.test(message)) {
+    return { status: 400, error: 'Invalid request', detail: 'Unknown or unsupported tool' }
+  }
   // not found
   if (/not found/i.test(message)) {
     return { status: 404, error: 'Not Found', detail: message }
@@ -155,8 +163,14 @@ function buildModelPayload(userText, today, tools, history) {
     message: String(userText || ''),
     today,
     tools: tools.map(t => ({ name: t.name, schema: t.schema })),
-    history: Array.isArray(history) ? history.slice(-8) : [],
+    history: Array.isArray(history) ? history.slice(-getMaxHistory()) : [],
   }
+}
+
+function getMaxHistory() {
+  const n = Number(process.env.AI_MAX_HISTORY)
+  if (Number.isFinite(n) && n > 0 && n <= 100) return n
+  return 8
 }
 
 /**
@@ -164,9 +178,69 @@ function buildModelPayload(userText, today, tools, history) {
  * Throws on transport errors.
  */
 async function callModelStrict(payload) {
-  // Placeholder shim: emulate clarify/tool_call/answer with existing heuristic
+  const provider = String(process.env.AI_PROVIDER || '').toLowerCase()
+  const hasOpenAI = !!process.env.OPENAI_API_KEY
+  if (hasOpenAI && (provider === '' || provider === 'openai')) {
+    try {
+      return await callOpenAIJson(payload)
+    } catch (_) {
+      // fall through to shim on failure
+    }
+  }
+  // Fallback shim: emulate clarify/tool_call/answer with regex heuristic
   const decision = decideNextStep(payload.message, payload.today)
   return JSON.stringify(decision)
+}
+
+async function callOpenAIJson(payload) {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY missing')
+  const model = process.env.AI_MODEL || 'gpt-4o-mini'
+  const controller = new AbortController()
+  const timeoutMs = Number(process.env.AI_TIMEOUT_MS) || 15000
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const system = [
+      'You are a concise backend planner for an expense assistant.',
+      'Decide the next action and output ONLY strict JSON with one of:',
+      '{"type":"clarify","question":"..."} | {"type":"answer","content":"..."} | {"type":"tool_call","tool":"add_expense|get_balance|list_expenses|update_expense|delete_expense","args":{...},"confirmationSuggested":true|false,"confirmationMessage":"..."}',
+      'Be conservative with tool calls if key information is missing; ask to clarify instead.',
+      'Never include code fences or extra text.'
+    ].join(' ')
+    const user = {
+      role: 'user',
+      content: JSON.stringify({
+        input: payload.message,
+        today: payload.today,
+        tools: payload.tools,
+        history: payload.history
+      })
+    }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [ { role: 'system', content: system }, user ],
+        response_format: { type: 'json_object' },
+        temperature: 0
+      }),
+      signal: controller.signal
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`OpenAI error: ${res.status} ${errText}`)
+    }
+    const json = await res.json()
+    const content = json?.choices?.[0]?.message?.content
+    if (!content || typeof content !== 'string') throw new Error('OpenAI empty content')
+    return content
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**
