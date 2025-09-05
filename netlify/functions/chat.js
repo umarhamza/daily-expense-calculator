@@ -29,6 +29,7 @@ export async function handler(event) {
   try {
     const service = getExpenseService()
     const today = getTodayDate()
+    const tools = getToolCatalog()
 
     // Confirmation path: execute proposed tool directly
     const confirmation = normalizeConfirm(body?.confirm)
@@ -42,8 +43,18 @@ export async function handler(event) {
       }
     }
 
-    // Decide next step using lightweight intent heuristics (simulate AI contract)
-    const decision = decideNextStep(userText, today)
+    // Decide next step via strict JSON model contract with single retry
+    const modelPayload = buildModelPayload(userText, today, tools, history)
+    let decision
+    {
+      const raw = await callModelStrict(modelPayload)
+      decision = safeParseAndValidateModelResult(raw)
+      if (!decision) {
+        const raw2 = await callModelStrict(modelPayload)
+        decision = safeParseAndValidateModelResult(raw2)
+        if (!decision) return jsonRes(500, { error: 'Server error', detail: 'Model output invalid' })
+      }
+    }
 
     if (decision.type === 'clarify') {
       const res = { answer: decision.question }
@@ -88,6 +99,19 @@ function jsonRes(statusCode, obj) {
   }
 }
 
+/**
+ * Returns YYYY-MM-DD tool catalog descriptors.
+ */
+function getToolCatalog() {
+  return [
+    { name: 'add_expense', schema: { required: ['item', 'amount'], optional: ['date', 'category'] } },
+    { name: 'get_balance', schema: { required: [], optional: ['range'] } },
+    { name: 'list_expenses', schema: { required: [], optional: ['range', 'category'] } },
+    { name: 'update_expense', schema: { required: ['id'], optional: ['item', 'amount', 'date', 'category'] } },
+    { name: 'delete_expense', schema: { required: ['id'], optional: [] } },
+  ]
+}
+
 function mapDomainErrorToHttp(err) {
   const message = String(err?.message || err || '')
   // RBAC
@@ -118,6 +142,59 @@ function getTodayDate() {
     return new Date().toISOString().slice(0, 10)
   } catch (_) {
     return '1970-01-01'
+  }
+}
+
+/**
+ * Build the strict model payload.
+ * Inputs: userText, today (YYYY-MM-DD), tools[], history
+ * Returns: object payload
+ */
+function buildModelPayload(userText, today, tools, history) {
+  return {
+    message: String(userText || ''),
+    today,
+    tools: tools.map(t => ({ name: t.name, schema: t.schema })),
+    history: Array.isArray(history) ? history.slice(-8) : [],
+  }
+}
+
+/**
+ * Call model provider (shim). Returns raw string from provider.
+ * Throws on transport errors.
+ */
+async function callModelStrict(payload) {
+  // Placeholder shim: emulate clarify/tool_call/answer with existing heuristic
+  const decision = decideNextStep(payload.message, payload.today)
+  return JSON.stringify(decision)
+}
+
+/**
+ * Validate and normalize model JSON.
+ * Returns a valid decision object or null on failure.
+ */
+function safeParseAndValidateModelResult(raw) {
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (!obj || typeof obj !== 'object') return null
+    if (obj.type === 'clarify') {
+      if (typeof obj.question === 'string') return { type: 'clarify', question: obj.question }
+      return null
+    }
+    if (obj.type === 'answer') {
+      if (typeof obj.content === 'string') return { type: 'answer', content: obj.content }
+      return null
+    }
+    if (obj.type === 'tool_call') {
+      if (typeof obj.tool !== 'string' || typeof obj.args !== 'object' || obj.args == null) return null
+      const res = { type: 'tool_call', tool: obj.tool, args: obj.args }
+      if (obj.confirmationSuggested != null) res.confirmationSuggested = Boolean(obj.confirmationSuggested)
+      if (obj.confirmationMessage != null) res.confirmationMessage = String(obj.confirmationMessage)
+      return res
+    }
+    return null
+  } catch (_) {
+    return null
   }
 }
 
@@ -183,6 +260,20 @@ function validateToolCall(tool, args) {
   const fail = (m) => ({ ok: false, error: new Error(m) })
   if (!tool || typeof tool !== 'string') return fail('tool is required')
   if (!args || typeof args !== 'object') return fail('args must be object')
+
+  // Enforce unknown field rejection per tool schema where applicable
+  const known = {
+    add_expense: ['item', 'amount', 'date', 'category'],
+    get_balance: ['range'],
+    list_expenses: ['range', 'category'],
+    update_expense: ['id', 'item', 'amount', 'date', 'category'],
+    delete_expense: ['id'],
+  }
+  if (known[tool]) {
+    for (const k of Object.keys(args)) {
+      if (!known[tool].includes(k)) return fail(`unknown field: ${k}`)
+    }
+  }
 
   if (tool === 'add_expense') {
     if (typeof args.item !== 'string' || !args.item.trim()) return fail('item is required')
