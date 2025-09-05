@@ -27,25 +27,54 @@ export async function handler(event) {
   const userText = extractLastUserMessage(history)
 
   try {
-    // AI-1: strict JSON routing with one retry on invalid shape
-    let ai1 = await callAi1Strict(userText, history, userContext)
-    if (!isValidAi1Response(ai1)) ai1 = await callAi1Strict(userText, history, userContext)
-    if (!isValidAi1Response(ai1)) {
-      return jsonRes(500, { error: 'Server error', detail: 'AI-1 produced invalid output' })
-    }
+    const service = getExpenseService()
+    const today = getTodayDate()
 
-    if (ai1.action === 'pass_to_AI2') {
-      const service = getExpenseService()
+    // Confirmation path: execute proposed tool directly
+    const confirmation = normalizeConfirm(body?.confirm)
+    if (confirmation) {
       try {
-        const ai2Message = await handleAi2(userText, history, userContext, service)
-        return jsonRes(200, { handledBy: 'AI-2', message: ai2Message, action: 'pass_to_AI2', answer: ai2Message })
+        const executed = await executeTool(confirmation.tool, confirmation.args, userContext, service, today)
+        return jsonRes(200, executed)
       } catch (e) {
         const { status, error, detail } = mapDomainErrorToHttp(e)
         return jsonRes(status, { error, detail })
       }
     }
 
-    return jsonRes(200, { handledBy: 'AI-1', message: ai1.message, action: 'none', answer: ai1.message })
+    // Decide next step using lightweight intent heuristics (simulate AI contract)
+    const decision = decideNextStep(userText, today)
+
+    if (decision.type === 'clarify') {
+      const res = { answer: decision.question }
+      if (decision.attemptedAdd) res.attemptedAdd = true
+      return jsonRes(200, res)
+    }
+
+    if (decision.type === 'answer') {
+      return jsonRes(200, { answer: decision.content })
+    }
+
+    if (decision.type === 'tool_call') {
+      const validation = validateToolCall(decision.tool, decision.args)
+      if (!validation.ok) {
+        return jsonRes(400, { error: 'Invalid request', detail: validation.error.message })
+      }
+      if (decision.confirmationSuggested) {
+        const proposal = { tool: decision.tool, args: decision.args, type: decision.tool }
+        const msg = decision.confirmationMessage || buildConfirmationMessage(decision.tool, decision.args, today)
+        return jsonRes(200, { answer: msg, confirmationRequired: true, proposal })
+      }
+      try {
+        const executed = await executeTool(decision.tool, decision.args, userContext, service, today)
+        return jsonRes(200, executed)
+      } catch (e) {
+        const { status, error, detail } = mapDomainErrorToHttp(e)
+        return jsonRes(status, { error, detail })
+      }
+    }
+
+    return jsonRes(200, { answer: 'Okay.' })
   } catch (e) {
     return jsonRes(500, { error: 'Server error', detail: String(e?.message || e) })
   }
@@ -84,6 +113,14 @@ function mapDomainErrorToHttp(err) {
   return { status: 500, error: 'Server error', detail: message }
 }
 
+function getTodayDate() {
+  try {
+    return new Date().toISOString().slice(0, 10)
+  } catch (_) {
+    return '1970-01-01'
+  }
+}
+
 /**
  * Extracts the most recent user message content from history.
  * Inputs: history: Array<{ role: 'user'|'assistant', content: string }>
@@ -119,31 +156,178 @@ function sanitizeUserContext(ctx) {
 }
 
 /**
- * AI-1: Talking AI that must return STRICT JSON with shape:
- * { message: string, action: 'none'|'pass_to_AI2' }
- * For now, we simulate a small router with heuristics and keep the API stable.
+ * Normalize confirm payload from client.
+ * Inputs: any value from body.confirm
+ * Returns: { tool: string, args: object } | null
  */
-async function callAi1Strict(userText, history, userContext) {
-  const s = String(userText || '').toLowerCase()
-  const looksExpensey = /\b(expense|expenses|spend|spent|add|log|record|list|show|update|delete|remove|total|cost|price|purchase|item)\b/.test(s)
-  if (looksExpensey) {
-    return { message: 'Routing to expenses assistant...', action: 'pass_to_AI2' }
+function normalizeConfirm(confirm) {
+  if (!confirm || typeof confirm !== 'object') return null
+  if (typeof confirm.tool === 'string' && confirm.args && typeof confirm.args === 'object') {
+    return { tool: confirm.tool, args: confirm.args }
   }
-  const msg = s ? 'I can help with expenses: add, list, update, or delete.' : 'Hello! How can I help with your expenses?'
-  return { message: msg, action: 'none' }
+  if (typeof confirm.type === 'string' && confirm.payload && typeof confirm.payload === 'object') {
+    if (confirm.payload.tool && confirm.payload.args) {
+      return { tool: String(confirm.type), args: confirm.payload.args }
+    }
+    return { tool: String(confirm.type), args: confirm.payload }
+  }
+  return null
 }
 
-function isValidAi1Response(v) {
-  if (!v || typeof v !== 'object') return false
-  const allowed = ['message', 'action']
-  const keys = Object.keys(v)
-  if (!keys.every(k => allowed.includes(k))) return false
-  if (typeof v.message !== 'string') return false
-  if (!(v.action === 'none' || v.action === 'pass_to_AI2')) return false
-  return true
+/**
+ * Validate requested tool call against simple schemas.
+ * Inputs: tool string, args object
+ * Returns: { ok: boolean, error?: Error }
+ */
+function validateToolCall(tool, args) {
+  const fail = (m) => ({ ok: false, error: new Error(m) })
+  if (!tool || typeof tool !== 'string') return fail('tool is required')
+  if (!args || typeof args !== 'object') return fail('args must be object')
+
+  if (tool === 'add_expense') {
+    if (typeof args.item !== 'string' || !args.item.trim()) return fail('item is required')
+    const n = Number(args.amount)
+    if (!Number.isFinite(n) || n <= 0) return fail('amount must be a positive number')
+    return { ok: true }
+  }
+  if (tool === 'get_balance') return { ok: true }
+  if (tool === 'list_expenses') return { ok: true }
+  if (tool === 'update_expense') {
+    const id = Number(args.id)
+    if (!Number.isFinite(id) || id <= 0) return fail('id must be a positive number')
+    if (args.item == null && args.amount == null) return fail('item or amount is required')
+    if (args.amount != null) {
+      const n = Number(args.amount)
+      if (!Number.isFinite(n) || n <= 0) return fail('amount must be a positive number')
+    }
+    if (args.item != null && typeof args.item !== 'string') return fail('item must be a string')
+    return { ok: true }
+  }
+  if (tool === 'delete_expense') {
+    const id = Number(args.id)
+    if (!Number.isFinite(id) || id <= 0) return fail('id must be a positive number')
+    return { ok: true }
+  }
+  return fail('Unknown tool')
 }
 
-// ------------------- AI-2 and Expense Domain -------------------
+/**
+ * Decide next step based on userText.
+ * Returns one of:
+ * - { type: 'clarify', question: string, attemptedAdd?: boolean }
+ * - { type: 'answer', content: string }
+ * - { type: 'tool_call', tool: string, args: object, confirmationSuggested?: boolean, confirmationMessage?: string }
+ */
+function decideNextStep(userText, today) {
+  const s = String(userText || '').trim()
+  const lower = s.toLowerCase()
+  if (!s) return { type: 'answer', content: 'Hello! How can I help with your expenses?' }
+
+  // list
+  if (/\b(list|show)\b/.test(lower)) {
+    return { type: 'tool_call', tool: 'list_expenses', args: {} }
+  }
+
+  // balance / total
+  if (/\b(balance|total|sum)\b/.test(lower)) {
+    return { type: 'tool_call', tool: 'get_balance', args: {} }
+  }
+
+  // delete #id
+  {
+    const m = /(delete|remove)\s*(#|id\s*)?(\d+)/i.exec(s)
+    if (m) {
+      const id = Number(m[3])
+      return { type: 'tool_call', tool: 'delete_expense', args: { id }, confirmationSuggested: true }
+    }
+  }
+
+  // update #id amount X or update #id item Y
+  {
+    const m = /update\s*(#|id\s*)?(\d+)\s*(amount|price|cost|item)\s*([^]+)$/i.exec(s)
+    if (m) {
+      const id = Number(m[2])
+      const field = m[3].toLowerCase()
+      const rest = m[4].trim()
+      const args = { id }
+      if (field === 'item') args.item = rest
+      else args.amount = parseFirstNumber(rest)
+      return { type: 'tool_call', tool: 'update_expense', args, confirmationSuggested: true }
+    }
+  }
+
+  // add/log/record ITEM AMOUNT
+  {
+    const m = /(add|log|record)\s+([^\d#]+?)\s+(\d+(?:\.\d+)?)/i.exec(s)
+    if (m) {
+      const item = m[2].trim()
+      const amount = Number(m[3])
+      return { type: 'tool_call', tool: 'add_expense', args: { item, amount, date: today } }
+    }
+  }
+
+  // attempted add but unclear
+  if (/\b(add|log|record)\b/.test(lower)) {
+    return { type: 'clarify', question: 'What item and amount?', attemptedAdd: true }
+  }
+
+  // expense-related generic guidance
+  if (/\b(expense|expenses|spend|spent|update|delete|remove|list|show|total|cost|price|purchase|item)\b/.test(lower)) {
+    return { type: 'answer', content: 'Try: "add coffee 3.50", "list expenses", "update #12 amount 5", or "delete #12".' }
+  }
+
+  return { type: 'answer', content: 'Okay.' }
+}
+
+function buildConfirmationMessage(tool, args, today) {
+  if (tool === 'delete_expense') return `Would you like me to delete #${Number(args.id)}?`
+  if (tool === 'update_expense') {
+    if (args.item != null) return `Update #${Number(args.id)} item to "${String(args.item)}"?`
+    if (args.amount != null) return `Update #${Number(args.id)} amount to ${formatAmount(args.amount)}?`
+  }
+  if (tool === 'add_expense') return `Would you like me to add ${String(args.item)} ${formatAmount(args.amount)} for ${today}?`
+  return 'Proceed?'
+}
+
+/**
+ * Execute a validated tool call and return a UI-compatible payload.
+ * Returns: { answer, added?/updated?/deleted?/listed?/balance? }
+ */
+async function executeTool(tool, args, userContext, service, today) {
+  const { tenantId, roles } = userContext
+  if (tool === 'add_expense') {
+    const row = await service.create(tenantId, roles, String(args.item), Number(args.amount))
+    const answer = `Added #${row.id}: ${row.item} ${formatAmount(row.amount)} for ${today}.`
+    return { answer, added: { items: [row] } }
+  }
+  if (tool === 'delete_expense') {
+    const id = Number(args.id)
+    await service.delete(tenantId, roles, id)
+    return { answer: `Deleted #${id}.` }
+  }
+  if (tool === 'update_expense') {
+    const id = Number(args.id)
+    const patch = {}
+    if (args.item != null) patch.item = String(args.item)
+    if (args.amount != null) patch.amount = Number(args.amount)
+    const updated = await service.update(tenantId, roles, id, patch)
+    return { answer: `Updated #${updated.id}: ${updated.item} ${formatAmount(updated.amount)}.` }
+  }
+  if (tool === 'list_expenses') {
+    const rows = await service.list(tenantId)
+    if (!rows.length) return { answer: 'No expenses yet.' }
+    const msg = rows.slice(0, 10).map(r => `#${r.id} ${r.item} ${formatAmount(r.amount)}`).join(', ')
+    return { answer: `Recent: ${msg}` }
+  }
+  if (tool === 'get_balance') {
+    const rows = await service.list(tenantId)
+    const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+    return { answer: `Balance: ${formatAmount(total)}.` }
+  }
+  throw new Error('Unsupported tool')
+}
+
+// ------------------- Orchestrator and Expense Domain -------------------
 
 /**
  * Creates a singleton in-memory expense service.
