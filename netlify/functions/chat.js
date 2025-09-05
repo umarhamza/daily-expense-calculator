@@ -38,14 +38,14 @@ export async function handler(event) {
       const service = getExpenseService()
       try {
         const ai2Message = await handleAi2(userText, history, userContext, service)
-        return jsonRes(200, { handledBy: 'AI-2', message: ai2Message, action: 'pass_to_AI2' })
+        return jsonRes(200, { handledBy: 'AI-2', message: ai2Message, action: 'pass_to_AI2', answer: ai2Message })
       } catch (e) {
         const { status, error, detail } = mapDomainErrorToHttp(e)
         return jsonRes(status, { error, detail })
       }
     }
 
-    return jsonRes(200, { handledBy: 'AI-1', message: ai1.message, action: 'none' })
+    return jsonRes(200, { handledBy: 'AI-1', message: ai1.message, action: 'none', answer: ai1.message })
   } catch (e) {
     return jsonRes(500, { error: 'Server error', detail: String(e?.message || e) })
   }
