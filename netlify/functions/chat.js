@@ -1,76 +1,49 @@
-import { createClient } from '@supabase/supabase-js'
-
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
-    return jsonRes(405, { error: 'Method not allowed' })
+    return jsonRes(405, { error: 'Method Not Allowed' })
   }
 
+  let body
   try {
-    const body = event.body ? JSON.parse(event.body) : {}
-    const question = String(body.question || body.message || '').trim()
-    if (!question) return jsonRes(400, { error: 'Message is required' })
+    body = event.body ? JSON.parse(event.body) : null
+  } catch (_) {
+    return jsonRes(400, { error: 'Invalid JSON body' })
+  }
 
-    const token = getBearerToken(event.headers?.authorization)
-    if (!token) return jsonRes(401, { error: 'Unauthorized' })
+  // Backward compatibility: accept {question|message} by converting to history
+  const legacyText = String(body?.question || body?.message || '').trim()
+  const history = Array.isArray(body?.history) && body.history.length
+    ? body.history
+    : (legacyText ? [{ role: 'user', content: legacyText }] : [])
 
-    const supabase = createServerSupabaseClient(token)
-    const { data: userData, error: userErr } = await supabase.auth.getUser()
-    if (userErr || !userData?.user?.id) return jsonRes(401, { error: 'Invalid session' })
-    const userId = userData.user.id
+  if (!Array.isArray(history) || history.length === 0) {
+    return jsonRes(400, { error: 'history (array) is required' })
+  }
 
-    const { currencySymbol } = await getCurrencySymbol(supabase, userId)
+  const userContext = sanitizeUserContext(body?.userContext)
+  const userText = extractLastUserMessage(history)
 
-    // Ensure chat exists or create a new one
-    let chatId = body.chatId || null
-    if (!chatId) {
-      const title = sanitizeTitle(String(body.title || question).slice(0, 80))
-      const { data: chatRow, error: chatErr } = await supabase
-        .from('chats')
-        .insert({ user_id: userId, title })
-        .select('id')
-        .single()
-      if (chatErr) return jsonRes(500, { error: 'Failed to create chat' })
-      chatId = chatRow.id
+  try {
+    // AI-1: strict JSON routing with one retry on invalid shape
+    let ai1 = await callAi1Strict(userText, history, userContext)
+    if (!isValidAi1Response(ai1)) ai1 = await callAi1Strict(userText, history, userContext)
+    if (!isValidAi1Response(ai1)) {
+      return jsonRes(500, { error: 'Server error', detail: 'AI-1 produced invalid output' })
     }
 
-    // Persist user message
-    await safeInsertMessage(supabase, userId, chatId, 'user', question)
-
-    // Handle confirmation flows
-    if (question.toLowerCase() === 'confirm' && body.confirm && body.confirm.type) {
-      const result = await handleConfirmation(supabase, userId, currencySymbol, body.confirm)
-      await safeInsertMessage(supabase, userId, chatId, 'assistant', result.answer)
-      return jsonRes(200, { ...result, chatId })
+    if (ai1.action === 'pass_to_AI2') {
+      const service = getExpenseService()
+      try {
+        const ai2Message = await handleAi2(userText, history, userContext, service)
+        return jsonRes(200, { handledBy: 'AI-2', message: ai2Message, action: 'pass_to_AI2' })
+      } catch (e) {
+        return jsonRes(500, { error: 'Server error', detail: String(e?.message || e) })
+      }
     }
 
-    // Intent filtering minimal guard
-    if (!looksFinanceRelated(question)) {
-      const answer = 'I can help with expenses: add purchases, totals, or spending insights.'
-      await safeInsertMessage(supabase, userId, chatId, 'assistant', answer)
-      return jsonRes(200, { answer, chatId })
-    }
-
-    const geminiKey = process.env.GEMINI_API_KEY
-    if (!geminiKey) {
-      const fallback = 'Ask me about your spending. For example: "Total coffee this month".'
-      await safeInsertMessage(supabase, userId, chatId, 'assistant', fallback)
-      return jsonRes(200, { answer: fallback, usedGemini: false, chatId })
-    }
-
-    const history = Array.isArray(body.history) ? body.history.slice(-20) : []
-    const plan = await callGeminiForPlan(geminiKey, question, history)
-
-    if (!plan.ok) {
-      const reply = 'Sorry, I had trouble understanding that. Try rephrasing your request.'
-      await safeInsertMessage(supabase, userId, chatId, 'assistant', reply)
-      return jsonRes(200, { answer: reply, usedGemini: true, chatId })
-    }
-
-    const routed = await routePlan(supabase, userId, currencySymbol, plan.data)
-    await safeInsertMessage(supabase, userId, chatId, 'assistant', routed.answer)
-    return jsonRes(200, { ...routed, usedGemini: true, chatId })
-  } catch (err) {
-    return jsonRes(500, { error: err?.message || 'Unexpected error' })
+    return jsonRes(200, { handledBy: 'AI-1', message: ai1.message, action: 'none' })
+  } catch (e) {
+    return jsonRes(500, { error: 'Server error', detail: String(e?.message || e) })
   }
 }
 
@@ -82,247 +55,229 @@ function jsonRes(statusCode, obj) {
   }
 }
 
-function getBearerToken(header) {
-  const s = String(header || '')
-  const m = /^Bearer\s+(.+)$/i.exec(s)
-  return m ? m[1].trim() : ''
-}
-
-function createServerSupabaseClient(token) {
-  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''
-  const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
-  return createClient(url, key, { global: { headers: { Authorization: `Bearer ${token}` } } })
-}
-
-async function safeInsertMessage(supabase, userId, chatId, role, content) {
-  try {
-    await supabase
-      .from('chat_messages')
-      .insert({ user_id: userId, chat_id: chatId, role, content })
-  } catch (_) {}
-}
-
-function sanitizeTitle(s) {
-  return String(s || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-async function getCurrencySymbol(supabase, userId) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('currency_symbol')
-    .eq('user_id', userId)
-    .maybeSingle()
-  const raw = (data?.currency_symbol || '').trim()
-  return { currencySymbol: raw || '' }
-}
-
-function formatAmount(amount, currencySymbol) {
-  const n = Number(amount)
-  if (!Number.isFinite(n)) return '0'
-  const num = n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-  return currencySymbol ? `${currencySymbol}${num}` : `${num}`
-}
-
-function looksFinanceRelated(q) {
-  const s = String(q || '').toLowerCase()
-  return /expense|spend|spent|total|budget|add|purchase|cost|price|receipt|item|top|category|categories|week|month|day/.test(s)
-}
-
-async function callGeminiForPlan(apiKey, question, history) {
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`
-    const system = [
-      'You are an assistant for a personal expense tracker app.',
-      'Decide ONE action and return STRICT JSON only. No markdown, no prose.',
-      'Actions:',
-      '- {"action":"propose_add","items":[{"item":"coffee","cost":3.5,"quantity":1,"date":"YYYY-MM-DD"}] }',
-      '- {"action":"query_total_item","item":"coffee","startDate":"YYYY-MM-DD?","endDate":"YYYY-MM-DD?"}',
-      '- {"action":"query_total_period","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}',
-      '- {"action":"top_items","startDate":"YYYY-MM-DD?","endDate":"YYYY-MM-DD?","limit":5 }',
-      '- {"action":"respond","content":"short reply"}',
-      'Rules:',
-      '- Ask for missing fields only if absolutely required; otherwise propose best guess.',
-      '- Prefer ISO dates. Quantity defaults to 1 if missing.',
-      '- Keep content concise.'
-    ].join('\n')
-
-    const parts = []
-    parts.push({ text: system })
-    if (Array.isArray(history) && history.length) {
-      const compact = history.map(h => `${h.role}: ${h.content}`).join('\n')
-      parts.push({ text: `History:\n${compact}` })
-    }
-    parts.push({ text: `User: ${question}` })
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents: [ { role: 'user', parts } ],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 256 }
-      })
-    })
-    if (!resp.ok) {
-      return { ok: false, error: `Gemini error ${resp.status}` }
-    }
-    const data = await resp.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const json = safeJsonParse(text)
-    if (!json) return { ok: false, error: 'Non-JSON response' }
-    return { ok: true, data: json }
-  } catch (e) {
-    return { ok: false, error: e?.message || 'Gemini failure' }
+/**
+ * Extracts the most recent user message content from history.
+ * Inputs: history: Array<{ role: 'user'|'assistant', content: string }>
+ * Returns: string content; falls back to empty string.
+ */
+function extractLastUserMessage(history) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const h = history[i]
+    if (h && h.role === 'user' && typeof h.content === 'string') return h.content
   }
+  return ''
 }
 
-function safeJsonParse(s) {
-  try {
-    return JSON.parse(String(s || '').trim())
-  } catch (_) {
-    return null
+/**
+ * Normalizes and sanitizes userContext.
+ * Inputs: ctx possibly undefined
+ * Returns: { userId, tenantId, roles[] }
+ */
+function sanitizeUserContext(ctx) {
+  const userId = String(ctx?.userId || 'unknown-user')
+  const tenantId = String(ctx?.tenantId || 'unknown-tenant')
+  const roles = Array.isArray(ctx?.roles) ? ctx.roles.map(r => String(r)) : []
+  return { userId, tenantId, roles }
+}
+
+/**
+ * AI-1: Talking AI that must return STRICT JSON with shape:
+ * { message: string, action: 'none'|'pass_to_AI2' }
+ * For now, we simulate a small router with heuristics and keep the API stable.
+ */
+async function callAi1Strict(userText, history, userContext) {
+  const s = String(userText || '').toLowerCase()
+  const looksExpensey = /\b(expense|expenses|spend|spent|add|log|record|list|show|update|delete|remove|total|cost|price|purchase|item)\b/.test(s)
+  if (looksExpensey) {
+    return { message: 'Routing to expenses assistant...', action: 'pass_to_AI2' }
   }
+  const msg = s ? 'I can help with expenses: add, list, update, or delete.' : 'Hello! How can I help with your expenses?'
+  return { message: msg, action: 'none' }
 }
 
-async function routePlan(supabase, userId, currencySymbol, plan) {
-  const action = String(plan?.action || '').toLowerCase()
-  if (action === 'propose_add') {
-    const items = normalizeItems(plan?.items)
-    if (!items.length) {
-      return { answer: 'I could not understand the items to add.', attemptedAdd: true }
-    }
-    const pretty = items.map(i => `${i.quantity}× ${i.item} at ${formatAmount(i.cost, currencySymbol)} (${i.date})`).join(', ')
-    return {
-      answer: `I can add: ${pretty}. Confirm?`,
-      confirmationRequired: true,
-      proposal: { type: 'add_expenses', items }
+function isValidAi1Response(v) {
+  return v && typeof v.message === 'string' && (v.action === 'none' || v.action === 'pass_to_AI2')
+}
+
+// ------------------- AI-2 and Expense Domain -------------------
+
+/**
+ * Creates a singleton in-memory expense service.
+ * Returns: ExpenseService with methods: create, update, delete, list, getById
+ * Throws: on cross-tenant access or missing rows
+ */
+function getExpenseService() {
+  if (!globalThis.__expenseRepo) {
+    globalThis.__expenseRepo = createInMemoryExpenseRepo()
+  }
+  return createExpenseService(globalThis.__expenseRepo)
+}
+
+/**
+ * In-memory repo with id sequence and basic CRUD.
+ * Records: { id:number, tenantId:string, item:string, amount:number }
+ */
+function createInMemoryExpenseRepo() {
+  let nextId = 1
+  const rows = []
+
+  return {
+    async create(row) {
+      const id = nextId++
+      const record = { id, tenantId: row.tenantId, item: row.item, amount: row.amount }
+      rows.push(record)
+      return record
+    },
+    async update(id, patch) {
+      const idx = rows.findIndex(r => r.id === id)
+      if (idx === -1) return null
+      rows[idx] = { ...rows[idx], ...patch }
+      return rows[idx]
+    },
+    async delete(id) {
+      const idx = rows.findIndex(r => r.id === id)
+      if (idx === -1) return false
+      rows.splice(idx, 1)
+      return true
+    },
+    async listByTenant(tenantId) {
+      return rows.filter(r => r.tenantId === tenantId).slice().sort((a, b) => b.id - a.id)
+    },
+    async getById(id) {
+      return rows.find(r => r.id === id) || null
     }
   }
-
-  if (action === 'query_total_item') {
-    const item = String(plan?.item || '').trim()
-    const { total } = await getTotalForItemServer(supabase, userId, item, plan?.startDate, plan?.endDate)
-    const answer = item ? `Total for ${item}${plan?.startDate ? ` between ${plan.startDate} and ${plan.endDate || 'today'}` : ''}: ${formatAmount(total, currencySymbol)}.` : 'Please specify an item.'
-    return { answer }
-  }
-
-  if (action === 'query_total_period') {
-    const { total } = await getTotalForPeriodServer(supabase, userId, plan?.startDate, plan?.endDate)
-    return { answer: `Total spend ${plan?.startDate} to ${plan?.endDate}: ${formatAmount(total, currencySymbol)}.` }
-  }
-
-  if (action === 'top_items') {
-    const limit = clampNumber(plan?.limit, 1, 10, 5)
-    const rows = await getTopItemsServer(supabase, userId, plan?.startDate, plan?.endDate, limit)
-    if (!rows.length) return { answer: 'No results found.' }
-    const msg = rows.map((r, i) => `${i + 1}. ${r.item}: ${formatAmount(r.total, currencySymbol)}`).join(' ')
-    return { answer: msg }
-  }
-
-  const content = String(plan?.content || '').trim()
-  return { answer: content || 'Okay.' }
 }
 
-function normalizeItems(arr) {
-  if (!Array.isArray(arr)) return []
-  const today = new Date()
-  const isoToday = today.toISOString().slice(0, 10)
-  const result = []
-  for (const raw of arr) {
-    const item = String(raw?.item || '').trim()
-    const cost = Number.parseFloat(raw?.cost)
-    const qRaw = raw?.quantity == null ? 1 : Number.parseInt(raw.quantity, 10)
-    const quantity = Number.isFinite(qRaw) && qRaw > 0 ? qRaw : 1
-    const date = typeof raw?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : isoToday
-    if (!item || !Number.isFinite(cost) || cost <= 0) continue
-    result.push({ item, cost, quantity, date })
+/**
+ * Service enforcing tenant scoping and basic RBAC for writes.
+ * Inputs: repo with CRUD; caller roles.
+ * Returns: methods: create, update, delete, list, getById
+ */
+function createExpenseService(repo) {
+  function assertWriteAllowed(roles) {
+    const has = Array.isArray(roles) && roles.some(r => r === 'finance-admin' || r === 'super-admin')
+    if (!has) throw new Error('Insufficient permissions')
   }
-  return result.slice(0, 20)
-}
 
-function clampNumber(n, min, max, fallback) {
-  const v = Number.parseInt(n, 10)
-  if (!Number.isFinite(v)) return fallback
-  return Math.min(Math.max(v, min), max)
-}
+  async function list(tenantId) {
+    return repo.listByTenant(tenantId)
+  }
 
-async function handleConfirmation(supabase, userId, currencySymbol, confirm) {
-  const type = String(confirm?.type || '').toLowerCase()
-  if (type === 'add_expenses') {
-    const items = normalizeItems(confirm?.payload?.items || confirm?.items)
-    if (!items.length) return { answer: 'Nothing to add.', attemptedAdd: true }
-    let total = 0
-    const inserted = []
-    for (const it of items) {
-      total += (it.cost * (it.quantity || 1))
-      for (let i = 0; i < (it.quantity || 1); i++) {
-        const { error } = await supabase
-          .from('expenses')
-          .insert({ user_id: userId, item: it.item, cost: it.cost, date: it.date, quantity: 1 })
-        if (!error) inserted.push(it)
-      }
+  async function create(tenantId, roles, item, amount) {
+    assertWriteAllowed(roles)
+    if (!item || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      throw new Error('Invalid item or amount')
     }
-    const answer = `Added ${inserted.length} item${inserted.length === 1 ? '' : 's'} totaling ${formatAmount(total, currencySymbol)}.`
-    return { answer, added: { items: inserted } }
+    return repo.create({ tenantId, item: String(item), amount: Number(amount) })
   }
-  return { answer: 'Cancelled.' }
-}
 
-async function getTotalForItemServer(supabase, userId, item, startDate, endDate) {
-  const name = String(item || '').trim()
-  if (!name) return { total: 0 }
-  let query = supabase
-    .from('expenses')
-    .select('item,cost,date')
-    .eq('user_id', userId)
-    .ilike('item', name)
-  if (isIsoDate(startDate)) query = query.gte('date', startDate)
-  if (isIsoDate(endDate)) query = query.lte('date', endDate)
-  const { data, error } = await query
-  if (error) return { total: 0 }
-  const total = (data || []).reduce((sum, row) => sum + (Number.isFinite(Number(row.cost)) ? Number(row.cost) : 0), 0)
-  return { total }
-}
-
-async function getTotalForPeriodServer(supabase, userId, startDate, endDate) {
-  if (!isIsoDate(startDate) || !isIsoDate(endDate)) return { total: 0 }
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('cost')
-    .eq('user_id', userId)
-    .gte('date', startDate)
-    .lte('date', endDate)
-  if (error) return { total: 0 }
-  const total = (data || []).reduce((sum, row) => sum + (Number.isFinite(Number(row.cost)) ? Number(row.cost) : 0), 0)
-  return { total }
-}
-
-async function getTopItemsServer(supabase, userId, startDate, endDate, limit = 5) {
-  let query = supabase
-    .from('expenses')
-    .select('item,cost,date')
-    .eq('user_id', userId)
-  if (isIsoDate(startDate)) query = query.gte('date', startDate)
-  if (isIsoDate(endDate)) query = query.lte('date', endDate)
-  const { data, error } = await query
-  if (error) return []
-  const totals = new Map()
-  for (const row of data || []) {
-    const key = String(row?.item || '').toLowerCase().trim()
-    if (!key) continue
-    const cost = Number(row?.cost)
-    const prev = totals.get(key) || 0
-    totals.set(key, prev + (Number.isFinite(cost) ? cost : 0))
+  async function update(tenantId, roles, id, patch) {
+    assertWriteAllowed(roles)
+    const row = await repo.getById(Number(id))
+    if (!row) throw new Error('Not found')
+    if (row.tenantId !== tenantId) throw new Error('Cross-tenant access denied')
+    const clean = {}
+    if (patch.item != null) clean.item = String(patch.item)
+    if (patch.amount != null) {
+      const n = Number(patch.amount)
+      if (!Number.isFinite(n) || n <= 0) throw new Error('Invalid amount')
+      clean.amount = n
+    }
+    const updated = await repo.update(row.id, clean)
+    return updated
   }
-  const arr = Array.from(totals.entries())
-    .map(([item, total]) => ({ item, total }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, Math.max(1, Number(limit) || 5))
-  return arr
+
+  async function remove(tenantId, roles, id) {
+    assertWriteAllowed(roles)
+    const row = await repo.getById(Number(id))
+    if (!row) throw new Error('Not found')
+    if (row.tenantId !== tenantId) throw new Error('Cross-tenant access denied')
+    const ok = await repo.delete(row.id)
+    if (!ok) throw new Error('Delete failed')
+    return true
+  }
+
+  async function getById(tenantId, id) {
+    const row = await repo.getById(Number(id))
+    if (!row) throw new Error('Not found')
+    if (row.tenantId !== tenantId) throw new Error('Cross-tenant access denied')
+    return row
+  }
+
+  return { list, create, update, delete: remove, getById }
 }
 
-function isIsoDate(s) {
-  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+/**
+ * AI-2 minimal intent parsing.
+ * Supports: create (add/log/record), delete (#id), update (#id), list (list/show)
+ * Enforces tenant scoping and write RBAC.
+ */
+async function handleAi2(userText, history, userContext, service) {
+  const s = String(userText || '').trim()
+  const lower = s.toLowerCase()
+  const { tenantId, roles } = userContext
+
+  // list
+  if (/\b(list|show)\b/.test(lower)) {
+    const rows = await service.list(tenantId)
+    if (!rows.length) return 'No expenses yet.'
+    const msg = rows.slice(0, 10).map(r => `#${r.id} ${r.item} ${formatAmount(r.amount)}`).join(', ')
+    return `Recent: ${msg}`
+  }
+
+  // delete #id or remove #id
+  {
+    const m = /(delete|remove)\s*(#|id\s*)?(\d+)/i.exec(s)
+    if (m) {
+      const id = Number(m[3])
+      await service.delete(tenantId, roles, id)
+      return `Deleted #${id}.`
+    }
+  }
+
+  // update #id amount X or update #id item Y
+  {
+    const m = /update\s*(#|id\s*)?(\d+)\s*(amount|price|cost|item)\s*([^]+)$/i.exec(s)
+    if (m) {
+      const id = Number(m[2])
+      const field = m[3].toLowerCase()
+      const rest = m[4].trim()
+      const patch = {}
+      if (field === 'item') patch.item = rest
+      else patch.amount = parseFirstNumber(rest)
+      const updated = await service.update(tenantId, roles, id, patch)
+      return `Updated #${updated.id}: ${updated.item} ${formatAmount(updated.amount)}.`
+    }
+  }
+
+  // add/log/record ITEM AMOUNT
+  {
+    const m = /(add|log|record)\s+([^\d#]+?)\s+(\d+(?:\.\d+)?)/i.exec(s)
+    if (m) {
+      const item = m[2].trim()
+      const amount = Number(m[3])
+      const row = await service.create(tenantId, roles, item, amount)
+      return `Added #${row.id}: ${row.item} ${formatAmount(row.amount)}.`
+    }
+  }
+
+  // fallback: guide user on expense intents
+  if (/\b(expense|expenses|spend|spent|add|log|record|update|delete|remove|list|show|total|cost|price|purchase|item)\b/.test(lower)) {
+    return 'I can add like "add coffee 3.50", list expenses, update "update #12 amount 5", or "delete #12".'
+  }
+
+  return 'Okay.'
+}
+
+function parseFirstNumber(s) {
+  const m = /(\d+(?:\.\d+)?)/.exec(String(s || ''))
+  return m ? Number(m[1]) : NaN
+}
+
+function formatAmount(n) {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '0'
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
